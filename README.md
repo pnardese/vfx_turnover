@@ -14,11 +14,11 @@ python vfx_turnover -m timeline.json
 ```
 python vfx_turnover -s timeline.json
 ```
-- load a json file and create an ALE for creating pulls AVID bin
+- load a json file and create an ALE for creating pulls in AVID bin
 ```
 python vfx_turnover -p timeline.json
 ```
-- load a json file and create an EDL for cutting in pulls AVID bin
+- load a json file and create an EDL for cutting in pulls
 ```
 python vfx_turnover -x timeline.json
 ```
