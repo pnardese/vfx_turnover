@@ -1,6 +1,6 @@
 ## Python script to help manage the VFX workflow in Avid Media Composer
 
-# Options:
+### Options:
 
 - load an EDL and create a JSON file with EDL events
 ```
