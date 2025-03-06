@@ -151,7 +151,7 @@ def export_ale_pulls(json_file_path: str, ale_pulls_file_path: str):
 FIELD_DELIM' + '\t' +'TABS\n\
 VIDEO_FORMAT' + '\t' + '1080\n\
 AUDIO_FORMAT' + '\t' + '48khz\n\
-FPS' + '\t' + '24\n\
+FPS' + '\t' + fps + '\n\
 \n\
 Column\n\
 Name' + '\t' + 'Tracks' + '\t' + 'Start' + '\t' + 'End' + '\t' + 'Tape\n\
