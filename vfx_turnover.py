@@ -158,7 +158,7 @@ Name' + '\t' + 'Tracks' + '\t' + 'Start' + '\t' + 'End' + '\t' + 'Tape\n\
 Data\n\
 \n' # Define ALE heading
 
-    handles_TC = Timecode(fps, '00:00:00:' + str(handles))
+    # handles_TC = Timecode(fps, '00:00:00:' + str(handles))
     with open(json_file_path) as input_file:
         json_file = json.load(input_file) # Load JSON file
     
@@ -167,8 +167,10 @@ Data\n\
         with open(ale_pulls_file_path, 'a') as output_file:
             output_file.write(heading) # Write heading to ALE file
             for i in range(len(json_file['events'])):
-                new_source_start_TC = Timecode(fps, json_file['events'][i]['source_start_TC']) - handles_TC # Define new source start timecode with handles
-                new_source_end_TC = Timecode(fps, json_file['events'][i]['source_end_TC']) + handles_TC # Define new source end timecode with handles
+                new_source_start_TC = Timecode(fps, json_file['events'][i]['source_start_TC']) - handles # Define new source start timecode with handles
+                new_source_end_TC = Timecode(fps, json_file['events'][i]['source_end_TC']) + handles - 1 # Define new source end timecode with handles
+                # print(Timecode(fps, json_file['events'][i]['source_end_TC']) + handles_TC.frame_number)
+                # print(new_source_end_TC)
                 sub_file_line = create_string('\t', json_file['events'][i]['VFX ID'], 'V', str(new_source_start_TC), str(new_source_end_TC), json_file['events'][i]['reel']) # Define ALE file line
                 # sub_file_line = json_file['events'][i]['VFX ID'] + '\t' + 'V' + '\t' + str(new_source_start_TC) + '\t' + str(new_source_end_TC) + \
                 # '\t' + json_file['events'][i]['reel'] + '\n' # Define ALE file line
@@ -197,7 +199,8 @@ def export_pulls_edl(json_file_path: str, edl_pulls_file_path: str):
                     json_file['events'][i]['track'], 
                     json_file['events'][i]['transition'], 
                     json_file['events'][i]['source_start_TC'], 
-                    json_file['events'][i]['source_end_TC'], 
+                    # json_file['events'][i]['source_end_TC'],
+                    str(Timecode(fps, json_file['events'][i]['source_end_TC']) - 1), # per gestire i consolidati senza maniglie...
                     json_file['events'][i]['record_start_TC'], 
                     json_file['events'][i]['record_end_TC'],
                 )
@@ -229,7 +232,8 @@ def export_dummy_edl(json_file_path: str, dummy_edl_file_path: str):
                     json_file['events'][i]['track'], 
                     json_file['events'][i]['transition'], 
                     json_file['events'][i]['source_start_TC'], 
-                    json_file['events'][i]['source_end_TC'], 
+                    # json_file['events'][i]['source_end_TC'],
+                    str(Timecode(fps, json_file['events'][i]['source_end_TC']) - 1), # per gestire i consolidati senza maniglie... 
                     json_file['events'][i]['record_start_TC'], 
                     json_file['events'][i]['record_end_TC'],
                 )
@@ -268,7 +272,8 @@ def export_google_tab(json_file_path: str, google_file_path: str):
                     '', 
                     str(duration), 
                     json_file['events'][i]['source_start_TC'],
-                    json_file['events'][i]['source_end_TC'],
+                    # json_file['events'][i]['source_end_TC'],
+                    str(Timecode(fps, json_file['events'][i]['source_end_TC']) - 1), # per gestire i consolidati senza maniglie...
                     str(number_of_frames),
                     json_file['events'][i]['reel'],
                 )
@@ -304,7 +309,8 @@ def export_final_vfx_edl(json_file_path: str, final_vfx_bin: str, edl_final_file
                             json_file['events'][j]['track'], 
                             json_file['events'][j]['transition'], 
                             json_file['events'][j]['source_start_TC'], 
-                            json_file['events'][j]['source_end_TC'], 
+                            # json_file['events'][j]['source_end_TC'],
+                            str(Timecode(fps, json_file['events'][i]['source_end_TC']) - 1), # per gestire i consolidati senza maniglie... 
                             json_file['events'][j]['record_start_TC'], 
                             json_file['events'][j]['record_end_TC'],
                         )
@@ -322,7 +328,7 @@ if __name__ == "__main__":
     global FilmID, fps, handles, VIDEO_FORMAT, AUDIO_FORMAT
     FilmID='EPSV' # Define film code
     fps='24'  # Define frame rate
-    handles=10  # Define handles
+    handles=0  # Define handles
 
     parser = argparse.ArgumentParser(description='Import EDL, create JSON and export various stuff for AVID')   # Define parser
 
