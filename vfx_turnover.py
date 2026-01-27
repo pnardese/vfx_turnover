@@ -168,7 +168,9 @@ Data\n\
             output_file.write(heading) # Write heading to ALE file
             for i in range(len(json_file['events'])):
                 new_source_start_TC = Timecode(fps, json_file['events'][i]['source_start_TC']) - handles # Define new source start timecode with handles
-                new_source_end_TC = Timecode(fps, json_file['events'][i]['source_end_TC']) + handles - 1 # Define new source end timecode with handles
+                # new_source_end_TC = Timecode(fps, json_file['events'][i]['source_end_TC']) + handles - 1 # Define new source end timecode with handles
+                new_source_end_TC = Timecode(fps, json_file['events'][i]['source_end_TC']) + handles # Define new source end timecode with handles
+
                 # print(Timecode(fps, json_file['events'][i]['source_end_TC']) + handles_TC.frame_number)
                 # print(new_source_end_TC)
                 sub_file_line = create_string('\t', json_file['events'][i]['VFX ID'], 'V', str(new_source_start_TC), str(new_source_end_TC), json_file['events'][i]['reel']) # Define ALE file line
@@ -199,8 +201,8 @@ def export_pulls_edl(json_file_path: str, edl_pulls_file_path: str):
                     json_file['events'][i]['track'], 
                     json_file['events'][i]['transition'], 
                     json_file['events'][i]['source_start_TC'], 
-                    # json_file['events'][i]['source_end_TC'],
-                    str(Timecode(fps, json_file['events'][i]['source_end_TC']) - 1), # per gestire i consolidati senza maniglie...
+                    json_file['events'][i]['source_end_TC'],
+                    # str(Timecode(fps, json_file['events'][i]['source_end_TC']) - 1), # per gestire i consolidati senza maniglie...
                     json_file['events'][i]['record_start_TC'], 
                     json_file['events'][i]['record_end_TC'],
                 )
@@ -232,8 +234,8 @@ def export_dummy_edl(json_file_path: str, dummy_edl_file_path: str):
                     json_file['events'][i]['track'], 
                     json_file['events'][i]['transition'], 
                     json_file['events'][i]['source_start_TC'], 
-                    # json_file['events'][i]['source_end_TC'],
-                    str(Timecode(fps, json_file['events'][i]['source_end_TC']) - 1), # per gestire i consolidati senza maniglie... 
+                    json_file['events'][i]['source_end_TC'],
+                    # str(Timecode(fps, json_file['events'][i]['source_end_TC']) - 1), # per gestire i consolidati senza maniglie... 
                     json_file['events'][i]['record_start_TC'], 
                     json_file['events'][i]['record_end_TC'],
                 )
@@ -272,8 +274,8 @@ def export_google_tab(json_file_path: str, google_file_path: str):
                     '', 
                     str(duration), 
                     json_file['events'][i]['source_start_TC'],
-                    # json_file['events'][i]['source_end_TC'],
-                    str(Timecode(fps, json_file['events'][i]['source_end_TC']) - 1), # per gestire i consolidati senza maniglie...
+                    json_file['events'][i]['source_end_TC'],
+                    # str(Timecode(fps, json_file['events'][i]['source_end_TC']) - 1), # per gestire i consolidati senza maniglie...
                     str(number_of_frames),
                     json_file['events'][i]['reel'],
                 )
@@ -309,8 +311,8 @@ def export_final_vfx_edl(json_file_path: str, final_vfx_bin: str, edl_final_file
                             json_file['events'][j]['track'], 
                             json_file['events'][j]['transition'], 
                             json_file['events'][j]['source_start_TC'], 
-                            # json_file['events'][j]['source_end_TC'],
-                            str(Timecode(fps, json_file['events'][i]['source_end_TC']) - 1), # per gestire i consolidati senza maniglie... 
+                            json_file['events'][j]['source_end_TC'],
+                            # str(Timecode(fps, json_file['events'][i]['source_end_TC']) - 1), # per gestire i consolidati senza maniglie... 
                             json_file['events'][j]['record_start_TC'], 
                             json_file['events'][j]['record_end_TC'],
                         )
