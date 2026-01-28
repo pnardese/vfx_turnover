@@ -1,8 +1,13 @@
 ## Python script to help manage the VFX workflow in Avid Media Composer
 
+### Supported EDL Formats
+
+- **Avid FIle_129 EDL** - Standard Avid Media Composer EDL format
+- **CMX3600 EDL** - Industry standard CMX3600 format
+
 ### Options:
 
-- load an EDL and create a JSON file with EDL events
+- load an EDL (Avid or CMX3600 format) and create a JSON file with EDL events
 ```
 python vfx_turnover -e timeline.edl
 ```
