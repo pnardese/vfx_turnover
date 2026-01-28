@@ -67,13 +67,17 @@ def edl_to_json(edl_file: str, json_file: str):
                      if parsed_line:
                         edl_data["events"].append(parsed_line)
                         last_event = edl_data["events"][-1]
-                elif line.startswith("*FROM"):  # Handle comment lines FROM
-                    last_event["FROM"] = line.strip("*FROM").strip() # Strip *FROM and spaces from line
-                elif line.startswith("*LOC:"):  # Handle comment lines LOC
-                    last_event["LOC"] = line.strip("*LOC:").strip() # Strip *LOC: and spaces from line
-                    last_event["VFX ID"] = line.strip("*LOC:").split()[-1] # Copy marker comment in VFX ID if present
-                elif line.startswith("*SOURCE"):  # Handle comment lines SOURCE
-                    last_event["SOURCE"] = line.strip("*SOURCE").strip() # Strip *SOURCE and spaces from line
+                elif line.startswith("*FROM") or line.startswith("* FROM"):  # Handle comment lines FROM (both formats)
+                    from_index = line.find("FROM")
+                    last_event["FROM"] = line[from_index + 4:].strip() # Extract text after FROM
+                elif line.startswith("*LOC:") or line.startswith("* LOC:"):  # Handle comment lines LOC (both formats)
+                    loc_index = line.find("LOC:")
+                    loc_value = line[loc_index + 4:].strip()
+                    last_event["LOC"] = loc_value # Extract text after LOC:
+                    last_event["VFX ID"] = loc_value.split()[-1] # Copy marker comment in VFX ID if present
+                elif line.startswith("*SOURCE") or line.startswith("* SOURCE"):  # Handle comment lines SOURCE (both formats)
+                    source_index = line.find("SOURCE")
+                    last_event["SOURCE"] = line[source_index + 6:].strip() # Extract text after SOURCE
                     if not last_event["LOC"]: # First edl with no markers, create VFX ID
                         scene_clip = last_event["FROM"].strip("*FROM CLIP NAME:").strip() # Strip *FROM CLIP NAME: and spaces from line
                         scene_clip = re.search(r'\d+', scene_clip).group().rjust(3, "0") # Select only scene number an pad to three zeros
@@ -291,6 +295,7 @@ def export_google_tab(json_file_path: str, google_file_path: str):
 def export_final_vfx_edl(json_file_path: str, final_vfx_bin: str, edl_final_file_path: str):
     """Export an EDL for cutting in final vfx in AVID."""
     AVID_bin_data = read_csv(final_vfx_bin, delimiter='\t') # Read AVID bin file
+    # print(AVID_bin_data)
     
     with open(json_file_path) as input_file:    # Open JSON file
         json_file = json.load(input_file)   # Load JSON file
@@ -302,8 +307,11 @@ def export_final_vfx_edl(json_file_path: str, final_vfx_bin: str, edl_final_file
             'FCM: NON-DROP FRAME\n'    # Define EDL heading
             output_file.write(heading)  # Write heading to EDL file
             for i in range(len(AVID_bin_data['Name'])):  # Loop through AVID bin file
+                # print(AVID_bin_data['Name'][i])
                 for j in range(len(json_file['events'])):   # Loop through JSON file
+                    # print(json_file['events'][j]['VFX ID'])
                     if json_file['events'][j]['VFX ID'] in AVID_bin_data['Name'][i]:    # Check if VFX ID is in AVID bin file name
+                        print("Processed: ", json_file['events'][j]['VFX ID'])
                         edl_final_file_line = create_string(
                             ' ', 
                             json_file['events'][j]['event_number'], 
@@ -316,6 +324,7 @@ def export_final_vfx_edl(json_file_path: str, final_vfx_bin: str, edl_final_file
                             json_file['events'][j]['record_start_TC'], 
                             json_file['events'][j]['record_end_TC'],
                         )
+                        # print(edl_final_file_line)
                         # edl_final_file_line = json_file['events'][j]['event_number'] + ' ' + AVID_bin_data['Name'][i] + ' ' + json_file['events'][j]['track'] + ' ' + \
                         # json_file['events'][j]['transition'] + ' ' + json_file['events'][j]['source_start_TC'] + ' ' + json_file['events'][j]['source_end_TC'] + ' ' + \
                         # json_file['events'][j]['record_start_TC'] + ' ' + json_file['events'][j]['record_end_TC']   # Define EDL file line
@@ -328,7 +337,7 @@ def export_final_vfx_edl(json_file_path: str, final_vfx_bin: str, edl_final_file
 if __name__ == "__main__":
 
     global FilmID, fps, handles, VIDEO_FORMAT, AUDIO_FORMAT
-    FilmID='EPSV' # Define film code
+    FilmID='ABC' # Define film code
     fps='24'  # Define frame rate
     handles=0  # Define handles
 
