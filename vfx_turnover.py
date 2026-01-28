@@ -77,7 +77,14 @@ def edl_to_json(edl_file: str, json_file: str):
                     last_event["VFX ID"] = loc_value.split()[-1] # Copy marker comment in VFX ID if present
                 elif line.startswith("*SOURCE") or line.startswith("* SOURCE"):  # Handle comment lines SOURCE (both formats)
                     source_index = line.find("SOURCE")
-                    last_event["SOURCE"] = line[source_index + 6:].strip() # Extract text after SOURCE
+                    source_value = line[source_index + 6:].strip() # Extract text after SOURCE
+                    # Strip "FILE:" prefix if present (CMX 3600 format)
+                    if source_value.upper().startswith("FILE:"):
+                        source_value = source_value[5:].strip()
+                    last_event["SOURCE"] = source_value
+                    # For CMX 3600: if SOURCE has full filename and reel is truncated, use SOURCE as reel
+                    if source_value and len(source_value) > len(last_event["reel"]):
+                        last_event["reel"] = source_value
                     if not last_event["LOC"]: # First edl with no markers, create VFX ID
                         scene_clip = last_event["FROM"].strip("*FROM CLIP NAME:").strip() # Strip *FROM CLIP NAME: and spaces from line
                         scene_clip = re.search(r'\d+', scene_clip).group().rjust(3, "0") # Select only scene number an pad to three zeros
