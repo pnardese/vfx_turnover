@@ -11,7 +11,7 @@
 ```
 python vfx_turnover -e timeline.edl
 ```
-- load a json file and create a marker text file for AVID
+- load a json file and create a marker text file for AVID (interactive options: user name, track, color, position)
 ```
 python vfx_turnover -m timeline.json
 ```
@@ -35,7 +35,22 @@ python vfx_turnover -d timeline.json
 ```
 python vfx_turnover -g timeline.json
 ```
+- load a json file and a source AAF to create a new AAF with VFX ID clip notes on each video clip
+```
+python vfx_turnover -a timeline.json source.aaf
+```
 - load a json file and a TAB bin text file to create an EDL to cut in VFX shots
 ```
 python vfx_turnover -f timeline.json avid_bin.txt
 ```
+
+### Markers export interactive options (`-m`):
+
+When exporting markers, the script prompts for the following options:
+
+| Option | Choices | Default |
+|--------|---------|---------|
+| AVID user name | any string | `vfx` |
+| Track | `TC`, `V1`–`V8` | `V1` |
+| Marker color | `green`, `red`, `blue`, `cyan`, `magenta`, `yellow`, `black`, `white` | `green` |
+| Marker position | `start`, `middle` | `start` |
