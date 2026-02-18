@@ -17,8 +17,45 @@ def create_string(separator: str, *args: str) -> str:
             string += i + separator
     return string
 
-def edl_to_json(edl_file: str, json_file: str):
-    """Reads an EDL file, parses it, and writes the data to a JSON file."""
+PROJECT_DIR = os.path.join(os.path.expanduser('~'), '.config', 'vfx_turnover')
+PROJECT_FILE = os.path.join(PROJECT_DIR, 'vfx_project.json')
+
+DEFAULT_CONFIG = {
+    'FilmID': 'ABC',
+    'fps': '24',
+    'handles': 0,
+    'markers': {
+        'user': 'vfx',
+        'track': 'V1',
+        'color': 'green',
+        'position': 'start',
+    }
+}
+
+def load_project():
+    """Load project file, set globals, return data dict."""
+    global FilmID, fps, handles
+    if not os.path.exists(PROJECT_FILE):
+        print(f"Error: No project file found. Run -e first to import an EDL.", file=sys.stderr)
+        sys.exit(1)
+    with open(PROJECT_FILE) as f:
+        project = json.load(f)
+    cfg = project['config']
+    FilmID = cfg['FilmID']
+    fps = cfg['fps']
+    handles = cfg['handles']
+    print(f"EDL: {cfg['edl_file']}")
+    return project
+
+def save_project(project):
+    """Write project dict to project file."""
+    os.makedirs(PROJECT_DIR, exist_ok=True)
+    with open(PROJECT_FILE, 'w') as f:
+        json.dump(project, f, indent=4)
+
+
+def edl_to_json(edl_file: str):
+    """Reads an EDL file, parses it, and returns the data as a dict."""
     
     def parse_edl_line(line: str) -> dict:
         """Parses a single line of an EDL and extracts relevant information."""
@@ -102,14 +139,21 @@ def edl_to_json(edl_file: str, json_file: str):
 
     except FileNotFoundError:
         print(f"Error: EDL file not found: {edl_file}") # Print error message
-        return
+        sys.exit(1)
 
-    try:        
-        with open(json_file, 'w') as outfile: # Open JSON file
-            json.dump(edl_data, outfile, indent=4) # Write data to JSON file
-        print(f"Successfully converted {edl_file} to {json_file}")  # Print success message
-    except Exception as e:
-        print(f"Error writing JSON file: {e}")  # Print error message
+    return edl_data
+
+
+def prompt_edl_options(config):
+    """Prompt for FilmID and fps when importing EDL."""
+    film_id = input(f"\nFilm ID [default: {config['FilmID']}]: ").strip() or config['FilmID']
+    fps_val = input(f"FPS [default: {config['fps']}]: ").strip() or config['fps']
+    return film_id, fps_val
+
+def prompt_ale_options(config):
+    """Prompt for handles when exporting ALE."""
+    raw = input(f"\nHandles in frames [default: {config['handles']}]: ").strip()
+    return int(raw) if raw else config['handles']
 
 
 MARKER_TRACKS = ['TC'] + [f'V{i}' for i in range(1, 9)]
@@ -134,12 +178,13 @@ def prompt_choice(prompt: str, choices: list, default: str) -> str:
         print(f"  Invalid choice. Enter 1-{len(choices)} or a value from the list.")
 
 
-def prompt_markers_options() -> tuple:
+def prompt_markers_options(config) -> tuple:
     """Interactive prompts for markers export options."""
-    user = input(f"\nAVID user name [default: vfx]: ").strip() or 'vfx'
-    track = prompt_choice("Track:", MARKER_TRACKS, 'V1')
-    color = prompt_choice("Marker color:", MARKER_COLORS, 'green')
-    position = prompt_choice("Marker position:", MARKER_POSITIONS, 'start')
+    m = config.get('markers', DEFAULT_CONFIG['markers'])
+    user = input(f"\nAVID user name [default: {m['user']}]: ").strip() or m['user']
+    track = prompt_choice("Track:", MARKER_TRACKS, m['track'])
+    color = prompt_choice("Marker color:", MARKER_COLORS, m['color'])
+    position = prompt_choice("Marker position:", MARKER_POSITIONS, m['position'])
     print()
     return user, track, color, position
 
@@ -374,6 +419,22 @@ def json_to_aaf(json_file_path: str, input_aaf_path: str, output_aaf_path: str):
                     target = comp
                     sel = comp['Selected'].value
                     clip_name = sel.mob.name if (sel and sel.mob) else ''
+                elif comp_type == 'OperationGroup':
+                    target = comp
+                    clip_name = ''
+                    segments = comp.get('InputSegments')
+                    if segments:
+                        for seg in segments:
+                            if isinstance(seg, aaf2.components.SourceClip) and seg.mob:
+                                clip_name = seg.mob.name
+                                break
+                            if hasattr(seg, 'components'):
+                                for sc in seg.components:
+                                    if isinstance(sc, aaf2.components.SourceClip) and sc.mob:
+                                        clip_name = sc.mob.name
+                                        break
+                                if clip_name:
+                                    break
                 else:
                     continue
 
@@ -407,7 +468,7 @@ def json_to_aaf(json_file_path: str, input_aaf_path: str, output_aaf_path: str):
 
         f.save()
 
-    print(f'\nWrote {clip_num} VFX ID clip notes to {output_aaf_path}')
+    print(f'\nAdded {clip_num} VFX ID clip notes to {output_aaf_path}')
 
 
 def export_final_vfx_edl(json_file_path: str, final_vfx_bin: str, edl_final_file_path: str):
@@ -454,74 +515,95 @@ def export_final_vfx_edl(json_file_path: str, final_vfx_bin: str, edl_final_file
 
 if __name__ == "__main__":
 
-    global FilmID, fps, handles, VIDEO_FORMAT, AUDIO_FORMAT
-    FilmID='ABC' # Define film code
-    fps='24'  # Define frame rate
-    handles=0  # Define handles
+    global FilmID, fps, handles
 
-    parser = argparse.ArgumentParser(description='Import EDL, create JSON and export various stuff for AVID')   # Define parser
+    parser = argparse.ArgumentParser(description='Import EDL, create project and export various stuff for AVID')
 
-    parser.add_argument('-e', '--edl', metavar =(''), help='Import an EDL and export a JSON, requires an EDL')  # Define arguments
-    parser.add_argument('-m', '--markers', metavar =(''), help='Export markers for AVID, requires a JSON (interactive options)')  # Define arguments
-    parser.add_argument('-s', '--subcaps', metavar =(''), help='Export subcaps file for AVID, requires a JSON') # Define arguments
-    parser.add_argument('-p', '--pulls', metavar =(''), help='Export ALE file for creating pulls in AVID bin, requires a JSON') # Define arguments
-    parser.add_argument('-x', '--edl_pulls', metavar =(''), help='Export EDL for cutting in pulls in AVID, requires a JSON')    # Define arguments
-    parser.add_argument('-d', '--dummy_edl', metavar =(''), help='Export Dummy EDL of VFX in AVID, requires a JSON')        # Define arguments
-    parser.add_argument('-g', '--google', metavar =(''), help='Export TAB file to import into a Spreadsheet, requires a JSON')  # Define arguments
-    parser.add_argument('-a', '--aaf', nargs=2, metavar=('JSON file', 'AAF file'), help='Export AAF with VFX ID clip notes, requires a JSON and source AAF')
-    parser.add_argument('-f', '--final', nargs=2, metavar=('JSON file', 'BIN file'), help='Export EDL for cutting in final vfx in AVID, requires a JSON and an AVID bin (TAB)') # Define arguments
-      
-    args = parser.parse_args() # Call function to parse arguments
+    parser.add_argument('-e', '--edl', metavar='EDL', help='Import an EDL and create a project file')
+    parser.add_argument('-m', '--markers', action='store_true', help='Export markers for AVID (interactive options)')
+    parser.add_argument('-s', '--subcaps', action='store_true', help='Export subcaps file for AVID')
+    parser.add_argument('-p', '--pulls', action='store_true', help='Export ALE file for creating pulls in AVID bin')
+    parser.add_argument('-x', '--edl_pulls', action='store_true', help='Export EDL for cutting in pulls in AVID')
+    parser.add_argument('-d', '--dummy_edl', action='store_true', help='Export Dummy EDL of VFX in AVID')
+    parser.add_argument('-g', '--google', action='store_true', help='Export TAB file to import into a Spreadsheet')
+    parser.add_argument('-a', '--aaf', metavar='AAF', help='Export AAF with VFX ID clip notes, requires a source AAF')
+    parser.add_argument('-f', '--final', metavar='BIN', help='Export EDL for cutting in final vfx in AVID, requires an AVID bin (TAB)')
 
-    if len(sys.argv) == 1:  # Check if no arguments are given
-        parser.print_help(sys.stderr)  # Print help message
-        sys.exit(0) # Exit program
-    
+    args = parser.parse_args()
+
+    if len(sys.argv) == 1:
+        parser.print_help(sys.stderr)
+        sys.exit(0)
+
     if args.edl:
-        edl_file_path =  args.edl # EDL input 
-        edl_filename = os.path.splitext(edl_file_path)[0] # Remove extension from EDL file
-        json_file_path = edl_filename + ".json"  #  JSON output file
-        edl_to_json(edl_file_path, json_file_path) # Call function to write edl to json
+        # Load existing config for defaults (or use DEFAULT_CONFIG)
+        if os.path.exists(PROJECT_FILE):
+            with open(PROJECT_FILE) as f:
+                old_config = json.load(f).get('config', DEFAULT_CONFIG)
+        else:
+            old_config = DEFAULT_CONFIG.copy()
+        film_id, fps_val = prompt_edl_options(old_config)
+        FilmID = film_id
+        fps = fps_val
+        edl_data = edl_to_json(args.edl)
+        edl_dir = os.path.dirname(os.path.abspath(args.edl))
+        project = {
+            'config': {
+                'edl_file': os.path.basename(args.edl),
+                'edl_dir': edl_dir,
+                'FilmID': film_id,
+                'fps': fps_val,
+                'handles': old_config.get('handles', 0),
+                'markers': old_config.get('markers', DEFAULT_CONFIG['markers']),
+            },
+            'edl_metadata': edl_data['edl_metadata'],
+            'events': edl_data['events'],
+        }
+        save_project(project)
+        print("Project saved.")
     elif args.markers:
-        json_file_path = args.markers # JSON file input
-        json_filename = os.path.splitext(json_file_path)[0] # Remove extension from JSON file
-        markers_file_path = json_filename + "_markers.txt"  # Markers output file
-        user, track, color, position = prompt_markers_options() # Interactive prompts
-        json_to_markers(json_file_path, markers_file_path, user, track, color, position) # Call function to write json to markers
+        project = load_project()
+        edl_dir = project['config']['edl_dir']
+        edl_stem = os.path.splitext(project['config']['edl_file'])[0]
+        user, track, color, position = prompt_markers_options(project['config'])
+        project['config']['markers'] = {'user': user, 'track': track, 'color': color, 'position': position}
+        save_project(project)
+        json_to_markers(PROJECT_FILE, os.path.join(edl_dir, edl_stem + '_markers.txt'), user, track, color, position)
     elif args.subcaps:
-        json_file_path = args.subcaps # JSON file input
-        json_filename = os.path.splitext(json_file_path)[0] # Remove extension from JSON file
-        sub_file_path = json_filename + "_subcaps.txt"  # Subcaps output file
-        json_to_subcaps(json_file_path, sub_file_path) # Call function to write json to subcaps
+        project = load_project()
+        edl_dir = project['config']['edl_dir']
+        edl_stem = os.path.splitext(project['config']['edl_file'])[0]
+        json_to_subcaps(PROJECT_FILE, os.path.join(edl_dir, edl_stem + '_subcaps.txt'))
     elif args.pulls:
-        json_file_path = args.pulls # JSON file input
-        json_filename = os.path.splitext(json_file_path)[0] # Remove extension from JSON file
-        ale_pulls_file_path = json_filename + ".ALE"  # ALE output file
-        export_ale_pulls(json_file_path, ale_pulls_file_path) # Call function to write json to ALE
+        project = load_project()
+        edl_dir = project['config']['edl_dir']
+        edl_stem = os.path.splitext(project['config']['edl_file'])[0]
+        handles = prompt_ale_options(project['config'])
+        project['config']['handles'] = handles
+        save_project(project)
+        export_ale_pulls(PROJECT_FILE, os.path.join(edl_dir, edl_stem + '.ALE'))
     elif args.edl_pulls:
-        json_file_path = args.edl_pulls # JSON file input
-        json_filename = os.path.splitext(json_file_path)[0] # Remove extension from JSON file
-        edl_pulls_file_path = json_filename + "_pulls.edl"  # ALE output file
-        export_pulls_edl(json_file_path, edl_pulls_file_path)   # Call function to write json to EDL for cutting in pulls in AVID
+        project = load_project()
+        edl_dir = project['config']['edl_dir']
+        edl_stem = os.path.splitext(project['config']['edl_file'])[0]
+        export_pulls_edl(PROJECT_FILE, os.path.join(edl_dir, edl_stem + '_pulls.edl'))
     elif args.dummy_edl:
-        json_file_path = args.dummy_edl # JSON file input
-        json_filename = os.path.splitext(json_file_path)[0] # Remove extension from JSON file
-        dummy_edl_file_path = json_filename + "_dummy.edl"  # Dummy EDL output file
-        export_dummy_edl(json_file_path, dummy_edl_file_path) # Call function to write json to dummy EDL
+        project = load_project()
+        edl_dir = project['config']['edl_dir']
+        edl_stem = os.path.splitext(project['config']['edl_file'])[0]
+        export_dummy_edl(PROJECT_FILE, os.path.join(edl_dir, edl_stem + '_dummy.edl'))
     elif args.google:
-        json_file_path = args.google # JSON file input
-        json_filename = os.path.splitext(json_file_path)[0] # Remove extension from JSON file
-        google_file_path = json_filename + "_TAB.txt"  # ALE output file
-        export_google_tab(json_file_path, google_file_path) # Call function to write json to TAB file
+        project = load_project()
+        edl_dir = project['config']['edl_dir']
+        edl_stem = os.path.splitext(project['config']['edl_file'])[0]
+        export_google_tab(PROJECT_FILE, os.path.join(edl_dir, edl_stem + '_TAB.txt'))
     elif args.aaf:
-        json_file_path = args.aaf[0] # JSON file input
-        json_filename = os.path.splitext(json_file_path)[0] # Remove extension from JSON file
-        input_aaf_path = args.aaf[1] # Source AAF file input
-        output_aaf_path = json_filename + "_notes.aaf" # Output AAF with clip notes
-        json_to_aaf(json_file_path, input_aaf_path, output_aaf_path)
+        project = load_project()
+        edl_dir = project['config']['edl_dir']
+        edl_stem = os.path.splitext(project['config']['edl_file'])[0]
+        json_to_aaf(PROJECT_FILE, args.aaf, os.path.join(edl_dir, edl_stem + '_notes.aaf'))
     elif args.final:
-        json_file_path = args.final[0] # JSON file input
-        json_filename = os.path.splitext(json_file_path)[0] # Remove extension from JSON file
-        edl_final_file_path = json_filename + "_vfx_final.edl"  # EDL output file
-        final_vfx_bin = args.final[1] # AVID bin file input
-        export_final_vfx_edl(json_file_path, final_vfx_bin, edl_final_file_path) # Call function to write json to EDL for cutting in final vfx in AVID
+        project = load_project()
+        edl_dir = project['config']['edl_dir']
+        edl_stem = os.path.splitext(project['config']['edl_file'])[0]
+        export_final_vfx_edl(PROJECT_FILE, args.final, os.path.join(edl_dir, edl_stem + '_vfx_final.edl'))
