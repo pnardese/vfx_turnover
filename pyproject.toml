@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vfx-turnover"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "pandas",
+    "pyaaf2",
+    "timecode",
+]
+
+[project.scripts]
+vfx-turnover = "vfx_turnover:main"
+
+[tool.setuptools]
+py-modules = ["vfx_turnover"]

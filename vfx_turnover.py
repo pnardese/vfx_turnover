@@ -513,7 +513,7 @@ def export_final_vfx_edl(json_file_path: str, final_vfx_bin: str, edl_final_file
         print(f"Error writing {edl_final_file_path}: {e}")  # Print error message
 
 
-if __name__ == "__main__":
+def main():
 
     global FilmID, fps, handles
 
@@ -607,3 +607,7 @@ if __name__ == "__main__":
         edl_dir = project['config']['edl_dir']
         edl_stem = os.path.splitext(project['config']['edl_file'])[0]
         export_final_vfx_edl(PROJECT_FILE, args.final, os.path.join(edl_dir, edl_stem + '_vfx_final.edl'))
+
+
+if __name__ == "__main__":
+    main()
