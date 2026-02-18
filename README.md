@@ -44,6 +44,16 @@ python vfx_turnover -a timeline.json source.aaf
 python vfx_turnover -f timeline.json avid_bin.txt
 ```
 
+### Parameters file
+
+The script persists project-specific settings in:
+
+```
+~/.config/vfx_turnover/vfx_project.json
+```
+
+This file is created automatically on first run and stores parameters such as the project name and other configuration values, so they don't need to be re-entered each session.
+
 ### Markers export interactive options (`-m`):
 
 When exporting markers, the script prompts for the following options:
