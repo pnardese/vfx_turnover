@@ -26,41 +26,41 @@ pipx reinstall vfx-turnover
 
 ### Options:
 
-- load an EDL (Avid or CMX3600 format) and create a JSON file with EDL events
+- import an EDL (Avid or CMX3600 format) and create a project file
 ```
 vfx-turnover -e timeline.edl
 ```
-- load a json file and create a marker text file for AVID (interactive options: user name, track, color, position)
+- export a marker text file for AVID (interactive options: user name, track, color, position)
 ```
-vfx-turnover -m timeline.json
+vfx-turnover -m
 ```
-- load a json file and create a subcaps text file for AVID
+- export a subcaps text file for AVID
 ```
-vfx-turnover -s timeline.json
+vfx-turnover -s
 ```
-- load a json file and create an ALE for creating pulls in AVID bin
+- export an ALE for creating pulls in AVID bin
 ```
-vfx-turnover -p timeline.json
+vfx-turnover -p
 ```
-- load a json file and create an EDL for cutting in pulls
+- export an EDL for cutting in pulls
 ```
-vfx-turnover -x timeline.json
+vfx-turnover -x
 ```
-- load a json file and create a dummy EDL to be used as a reference in AVID
+- export a dummy EDL to be used as a reference in AVID
 ```
-vfx-turnover -d timeline.json
+vfx-turnover -d
 ```
-- load a json file and create a TAB delimited text file for importing it in a spreadsheet
+- export a TAB delimited text file for importing it in a spreadsheet
 ```
-vfx-turnover -g timeline.json
+vfx-turnover -g
 ```
-- load a json file and a source AAF to create a new AAF with VFX ID clip notes on each video clip
+- export an AAF with VFX ID clip notes, requires a source AAF
 ```
-vfx-turnover -a timeline.json source.aaf
+vfx-turnover -a source.aaf
 ```
-- load a json file and a TAB bin text file to create an EDL to cut in VFX shots
+- export an EDL to cut in final VFX shots, requires an AVID bin (TAB)
 ```
-vfx-turnover -f timeline.json avid_bin.txt
+vfx-turnover -f avid_bin.txt
 ```
 
 ### Parameters file
