@@ -1,5 +1,22 @@
 ## Python script to help manage the VFX workflow in Avid Media Composer
 
+### Installation
+
+Requires Python 3.10+ and [pipx](https://pipx.pypa.io).
+
+```bash
+git clone https://github.com/pnardese/vfx_turnover.git
+cd vfx_turnover
+pipx install -e .
+```
+
+The `vfx-turnover` command will be available system-wide without activating a virtual environment.
+
+To update after pulling new changes:
+```bash
+pipx reinstall vfx-turnover
+```
+
 ### Supported EDL Formats
 
 - **Avid FIle_129 EDL** - Standard Avid Media Composer EDL format
@@ -9,39 +26,39 @@
 
 - load an EDL (Avid or CMX3600 format) and create a JSON file with EDL events
 ```
-python vfx_turnover -e timeline.edl
+vfx-turnover -e timeline.edl
 ```
 - load a json file and create a marker text file for AVID (interactive options: user name, track, color, position)
 ```
-python vfx_turnover -m timeline.json
+vfx-turnover -m timeline.json
 ```
 - load a json file and create a subcaps text file for AVID
 ```
-python vfx_turnover -s timeline.json
+vfx-turnover -s timeline.json
 ```
 - load a json file and create an ALE for creating pulls in AVID bin
 ```
-python vfx_turnover -p timeline.json
+vfx-turnover -p timeline.json
 ```
 - load a json file and create an EDL for cutting in pulls
 ```
-python vfx_turnover -x timeline.json
+vfx-turnover -x timeline.json
 ```
 - load a json file and create a dummy EDL to be used as a reference in AVID
 ```
-python vfx_turnover -d timeline.json
+vfx-turnover -d timeline.json
 ```
 - load a json file and create a TAB delimited text file for importing it in a spreadsheet
 ```
-python vfx_turnover -g timeline.json
+vfx-turnover -g timeline.json
 ```
 - load a json file and a source AAF to create a new AAF with VFX ID clip notes on each video clip
 ```
-python vfx_turnover -a timeline.json source.aaf
+vfx-turnover -a timeline.json source.aaf
 ```
 - load a json file and a TAB bin text file to create an EDL to cut in VFX shots
 ```
-python vfx_turnover -f timeline.json avid_bin.txt
+vfx-turnover -f timeline.json avid_bin.txt
 ```
 
 ### Parameters file
