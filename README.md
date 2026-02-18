@@ -1,5 +1,7 @@
 ## Python script to help manage the VFX workflow in Avid Media Composer
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 ### Installation
 
 Requires Python 3.10+ and [pipx](https://pipx.pypa.io).
