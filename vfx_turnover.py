@@ -3,6 +3,8 @@ import json
 import argparse
 import os
 import sys
+import shutil
+import aaf2
 from timecode import Timecode
 from pandas import read_csv
 
@@ -110,11 +112,40 @@ def edl_to_json(edl_file: str, json_file: str):
         print(f"Error writing JSON file: {e}")  # Print error message
 
 
-def json_to_markers(json_file_path: str, markers_file_path: str):
+MARKER_TRACKS = ['TC'] + [f'V{i}' for i in range(1, 9)]
+MARKER_COLORS = ['green', 'red', 'blue', 'cyan', 'magenta', 'yellow', 'black', 'white']
+MARKER_POSITIONS = ['start', 'middle']
+
+
+def prompt_choice(prompt: str, choices: list, default: str) -> str:
+    """Prompt user to pick from a numbered list. Press Enter for default."""
+    print(f"\n{prompt}")
+    for i, choice in enumerate(choices, 1):
+        marker = '*' if choice == default else ' '
+        print(f"  {marker} {i}) {choice}")
+    while True:
+        raw = input(f"Choice [default: {default}]: ").strip()
+        if not raw:
+            return default
+        if raw.isdigit() and 1 <= int(raw) <= len(choices):
+            return choices[int(raw) - 1]
+        if raw.lower() in [c.lower() for c in choices]:
+            return next(c for c in choices if c.lower() == raw.lower())
+        print(f"  Invalid choice. Enter 1-{len(choices)} or a value from the list.")
+
+
+def prompt_markers_options() -> tuple:
+    """Interactive prompts for markers export options."""
+    user = input(f"\nAVID user name [default: vfx]: ").strip() or 'vfx'
+    track = prompt_choice("Track:", MARKER_TRACKS, 'V1')
+    color = prompt_choice("Marker color:", MARKER_COLORS, 'green')
+    position = prompt_choice("Marker position:", MARKER_POSITIONS, 'start')
+    print()
+    return user, track, color, position
+
+
+def json_to_markers(json_file_path: str, markers_file_path: str, user: str = 'vfx', track_number: str = 'V1', marker_color: str = 'green', position: str = 'start'):
     """Reads a JSON file and export a markers file for AVID."""
-    user = 'enzo_0624' # Define AVID user name
-    track_number = 'V1' # Define track number
-    marker_color = 'green' # Define AVID marker color
 
     with open(json_file_path) as input_file:
         json_file = json.load(input_file) # Load JSON file
@@ -123,7 +154,14 @@ def json_to_markers(json_file_path: str, markers_file_path: str):
     try:
         with open(markers_file_path, 'a') as output_file: # Open markers file
             for i in range(len(json_file['events'])): # Loop through JSON file
-                markers_file_line = create_string('\t', user, json_file['events'][i]['record_start_TC'], track_number, marker_color, json_file['events'][i]['VFX ID'], '1') # Define markers file line
+                if position == 'middle':
+                    rec_start = Timecode(fps, json_file['events'][i]['record_start_TC'])
+                    rec_end = Timecode(fps, json_file['events'][i]['record_end_TC'])
+                    half_duration = (rec_end.frames - rec_start.frames) // 2
+                    marker_tc = str(rec_start + half_duration)
+                else:
+                    marker_tc = json_file['events'][i]['record_start_TC']
+                markers_file_line = create_string('\t', user, marker_tc, track_number, marker_color, json_file['events'][i]['VFX ID'], '1') # Define markers file line
                 # markers_file_line = user + '\t' + json_file['events'][i]['record_start_TC'] + '\t' + track_number + '\t' + marker_color + '\t' + \
                 # json_file['events'][i]['VFX ID'] + '\t' + '1' + '\n' # Define markers file line
                 output_file.write(markers_file_line + '\n') # Write line to markers file
@@ -299,6 +337,79 @@ def export_google_tab(json_file_path: str, google_file_path: str):
         print(f"Error writing {google_file_path}: {e}")  # Print error message
 
 
+def json_to_aaf(json_file_path: str, input_aaf_path: str, output_aaf_path: str):
+    """Copy an AAF and write VFX IDs from JSON as clip notes on each video clip."""
+
+    with open(json_file_path) as input_file:
+        json_file = json.load(input_file)
+    events = json_file['events']
+
+    shutil.copy2(input_aaf_path, output_aaf_path)
+
+    with aaf2.open(output_aaf_path, 'rw') as f:
+        for mob in f.content.toplevel():
+            video_slot = None
+            for slot in mob.slots:
+                if not hasattr(slot.segment, 'components'):
+                    continue
+                media_kind = getattr(slot, 'media_kind', None)
+                if media_kind and 'picture' in str(media_kind).lower():
+                    video_slot = slot
+                    break
+
+            if not video_slot:
+                continue
+
+            clip_num = 0
+            for comp in video_slot.segment.components:
+                comp_type = type(comp).__name__
+
+                if comp_type == 'Filler':
+                    continue
+
+                if isinstance(comp, aaf2.components.SourceClip) and comp.mob:
+                    target = comp
+                    clip_name = comp.mob.name
+                elif comp_type == 'Selector':
+                    target = comp
+                    sel = comp['Selected'].value
+                    clip_name = sel.mob.name if (sel and sel.mob) else ''
+                else:
+                    continue
+
+                clip_num += 1
+
+                if clip_num > len(events):
+                    print(f'  Warning: more clips ({clip_num}) than events ({len(events)}), stopping')
+                    break
+
+                vfx_id = events[clip_num - 1]['VFX ID']
+
+                attr_list = target.get('ComponentAttributeList')
+                if attr_list is None:
+                    target['ComponentAttributeList'] = []
+                    attr_list = target['ComponentAttributeList']
+
+                found = False
+                for attr in attr_list:
+                    if attr.name == '_COMMENT':
+                        attr.value = vfx_id
+                        found = True
+                        break
+
+                if not found:
+                    attr_list.append(aaf2.misc.TaggedValue(name='_COMMENT', value=vfx_id))
+
+                print(f'  Clip {clip_num}: {clip_name} -> {vfx_id}')
+
+            if clip_num < len(events):
+                print(f'  Warning: fewer clips ({clip_num}) than events ({len(events)})')
+
+        f.save()
+
+    print(f'\nWrote {clip_num} VFX ID clip notes to {output_aaf_path}')
+
+
 def export_final_vfx_edl(json_file_path: str, final_vfx_bin: str, edl_final_file_path: str):
     """Export an EDL for cutting in final vfx in AVID."""
     AVID_bin_data = read_csv(final_vfx_bin, delimiter='\t') # Read AVID bin file
@@ -351,12 +462,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Import EDL, create JSON and export various stuff for AVID')   # Define parser
 
     parser.add_argument('-e', '--edl', metavar =(''), help='Import an EDL and export a JSON, requires an EDL')  # Define arguments
-    parser.add_argument('-m', '--markers', metavar =(''), help='Export markers for AVID, requires a JSON')  # Define arguments
+    parser.add_argument('-m', '--markers', metavar =(''), help='Export markers for AVID, requires a JSON (interactive options)')  # Define arguments
     parser.add_argument('-s', '--subcaps', metavar =(''), help='Export subcaps file for AVID, requires a JSON') # Define arguments
     parser.add_argument('-p', '--pulls', metavar =(''), help='Export ALE file for creating pulls in AVID bin, requires a JSON') # Define arguments
     parser.add_argument('-x', '--edl_pulls', metavar =(''), help='Export EDL for cutting in pulls in AVID, requires a JSON')    # Define arguments
     parser.add_argument('-d', '--dummy_edl', metavar =(''), help='Export Dummy EDL of VFX in AVID, requires a JSON')        # Define arguments
     parser.add_argument('-g', '--google', metavar =(''), help='Export TAB file to import into a Spreadsheet, requires a JSON')  # Define arguments
+    parser.add_argument('-a', '--aaf', nargs=2, metavar=('JSON file', 'AAF file'), help='Export AAF with VFX ID clip notes, requires a JSON and source AAF')
     parser.add_argument('-f', '--final', nargs=2, metavar=('JSON file', 'BIN file'), help='Export EDL for cutting in final vfx in AVID, requires a JSON and an AVID bin (TAB)') # Define arguments
       
     args = parser.parse_args() # Call function to parse arguments
@@ -373,8 +485,9 @@ if __name__ == "__main__":
     elif args.markers:
         json_file_path = args.markers # JSON file input
         json_filename = os.path.splitext(json_file_path)[0] # Remove extension from JSON file
-        markers_file_path = json_filename + "_markers.txt"  # Markers output file    
-        json_to_markers(json_file_path, markers_file_path) # Call function to write json to markers
+        markers_file_path = json_filename + "_markers.txt"  # Markers output file
+        user, track, color, position = prompt_markers_options() # Interactive prompts
+        json_to_markers(json_file_path, markers_file_path, user, track, color, position) # Call function to write json to markers
     elif args.subcaps:
         json_file_path = args.subcaps # JSON file input
         json_filename = os.path.splitext(json_file_path)[0] # Remove extension from JSON file
@@ -400,6 +513,12 @@ if __name__ == "__main__":
         json_filename = os.path.splitext(json_file_path)[0] # Remove extension from JSON file
         google_file_path = json_filename + "_TAB.txt"  # ALE output file
         export_google_tab(json_file_path, google_file_path) # Call function to write json to TAB file
+    elif args.aaf:
+        json_file_path = args.aaf[0] # JSON file input
+        json_filename = os.path.splitext(json_file_path)[0] # Remove extension from JSON file
+        input_aaf_path = args.aaf[1] # Source AAF file input
+        output_aaf_path = json_filename + "_notes.aaf" # Output AAF with clip notes
+        json_to_aaf(json_file_path, input_aaf_path, output_aaf_path)
     elif args.final:
         json_file_path = args.final[0] # JSON file input
         json_filename = os.path.splitext(json_file_path)[0] # Remove extension from JSON file
