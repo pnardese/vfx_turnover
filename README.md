@@ -63,6 +63,8 @@ vfx-turnover -a source.aaf
 vfx-turnover -f avid_bin.txt
 ```
 
+All exported files are saved in the same folder as the original EDL.
+
 ### Parameters file
 
 The script persists project-specific settings in:
