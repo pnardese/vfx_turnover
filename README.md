@@ -61,13 +61,23 @@ When exporting markers (`-m`), the script prompts for:
 | Marker color | `green`, `red`, `blue`, `cyan`, `magenta`, `yellow`, `black`, `white` | `green` |
 | Marker position | `start`, `middle` | `start` |
 
-### 3. Export Frames
+### 3. Export AAF with Clip Notes
+
+As an alternative to markers, VFX IDs can be embedded as clip notes directly on each shot in the sequence. Export the sequence as AAF from Avid, then run:
+
+```
+vfx-turnover -n sequence.aaf
+```
+
+The output AAF is saved next to the source file with `_notes` appended to the filename.
+
+### 4. Export Frames
 
 Export markers from Avid as JPGs to use them to build a VFX shots database.
 
 ![Export settings for frame extraction at marker's position](imgs/02_export_frames.png)
 
-### 4. Export TAB Text File
+### 5. Export TAB Text File
 
 Export a TAB-delimited file with VFX IDs info, importable in any database or spreadsheet to build a VFX shot database.
 
@@ -75,7 +85,7 @@ Export a TAB-delimited file with VFX IDs info, importable in any database or spr
 vfx-turnover -t
 ```
 
-### 5. Export ALE Pulls
+### 6. Export ALE Pulls
 
 Export ALE Pulls to create pulls (subclips named with VFX IDs from master clips). After selecting master clips in the bin, drag the ALE file onto the bin. Import settings: *Merge events with known sources and automatically create subclips*.
 
@@ -85,7 +95,7 @@ vfx-turnover -p
 
 ![Import settings](imgs/03_merge_events_ale.png)
 
-### 6. Export Pulls EDL
+### 7. Export Pulls EDL
 
 Export a Pulls EDL to create a timeline with pull subclips. Import the EDL into an Avid bin and relink to pull subclips using Names.
 
@@ -95,7 +105,7 @@ vfx-turnover -c
 
 ![Relink configuration](imgs/04_relink_edl_pulls_v02.png)
 
-### 7. VFX Cut-ins
+### 8. VFX Cut-ins
 
 When you receive incoming VFX (`.mov` files), import them into Avid, then export the bin in TAB format. Use the TAB file to generate an EDL for cutting the VFX into the timeline. Required bin columns: **Color**, **Name**, **Duration**, **Start**, **End**, **Tape**.
 
