@@ -30,7 +30,7 @@ pipx reinstall vfx-turnover
 
 ### 1. Create EDL from Avid
 
-Create an EDL (File_129 or CMX3600) from the Avid video track containing only shots planned for VFX. In List Options in Avid, check: **Clip Names**, **Source File Name**, and **Markers**.
+Create an EDL (File_129 or CMX3600) from the Avid video track containing only shots planned for VFX, simplify timeline by removing transitions and committing groups. In List Options in Avid, check: **Clip Names**, **Source File Name**, and **Markers**.
 
 VFX IDs are generated automatically based on scene numbers: `FILM_ID_Scene_num`, where `num` is a progressive number like 010, 020, 030, etc.
 
