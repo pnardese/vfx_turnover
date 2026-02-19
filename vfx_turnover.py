@@ -491,7 +491,7 @@ def main():
     parser.add_argument('-s', '--subcaps', action='store_true', help='Export subcaps file for AVID')
     parser.add_argument('-p', '--pulls', action='store_true', help='Export ALE file for creating pulls in AVID bin')
     parser.add_argument('-c', '--edl_pulls', action='store_true', help='Export EDL for cutting in pulls in AVID')
-    parser.add_argument('-g', '--google', action='store_true', help='Export TAB file to import into a Spreadsheet')
+    parser.add_argument('-t', '--google', action='store_true', help='Export TAB file to import into a Spreadsheet')
     parser.add_argument('-a', '--aaf', metavar='AAF', help='Export AAF with VFX ID clip notes, requires a source AAF')
     parser.add_argument('-f', '--final', metavar='BIN', help='Export EDL for cutting in final vfx in AVID, requires an AVID bin (TAB)')
 

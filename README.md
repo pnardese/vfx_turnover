@@ -72,7 +72,7 @@ Export markers from Avid as JPGs to use them to build a VFX shots database.
 Export a TAB-delimited file with VFX IDs info, importable in any database or spreadsheet to build a VFX shot database.
 
 ```
-vfx-turnover -g
+vfx-turnover -t
 ```
 
 ### 5. Export ALE Pulls
@@ -116,7 +116,7 @@ vfx-turnover -f avid_bin.txt
 | `-s` | Export a subcaps text file for Avid |
 | `-p` | Export an ALE for creating pulls in Avid bin |
 | `-c` | Export an EDL for cutting in pulls |
-| `-g` | Export a TAB-delimited text file for spreadsheet import |
+| `-t` | Export a TAB-delimited text file for spreadsheet import |
 | `-a source.aaf` | Export an AAF with VFX ID clip notes (requires source AAF) |
 | `-f avid_bin.txt` | Export an EDL to cut in final VFX shots (requires Avid bin TAB) |
 
