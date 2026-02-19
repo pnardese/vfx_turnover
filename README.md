@@ -90,7 +90,7 @@ vfx-turnover -p
 Export a Pulls EDL to create a timeline with pull subclips. Import the EDL into an Avid bin and relink to pull subclips using Names.
 
 ```
-vfx-turnover -x
+vfx-turnover -c
 ```
 
 ![Relink configuration](imgs/04_relink_edl_pulls_v02.png)
@@ -115,8 +115,7 @@ vfx-turnover -f avid_bin.txt
 | `-m` | Export a marker text file for Avid (interactive options) |
 | `-s` | Export a subcaps text file for Avid |
 | `-p` | Export an ALE for creating pulls in Avid bin |
-| `-x` | Export an EDL for cutting in pulls |
-| `-d` | Export a dummy EDL to use as reference in Avid |
+| `-c` | Export an EDL for cutting in pulls |
 | `-g` | Export a TAB-delimited text file for spreadsheet import |
 | `-a source.aaf` | Export an AAF with VFX ID clip notes (requires source AAF) |
 | `-f avid_bin.txt` | Export an EDL to cut in final VFX shots (requires Avid bin TAB) |

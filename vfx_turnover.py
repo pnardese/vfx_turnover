@@ -309,39 +309,6 @@ def export_pulls_edl(json_file_path: str, edl_pulls_file_path: str):
         print(f"Error writing {edl_pulls_file_path}: {e}")  # Print error message
 
 
-def export_dummy_edl(json_file_path: str, dummy_edl_file_path: str):
-    """Export a Dummy EDL of VFX in AVID."""
-    with open(json_file_path) as input_file: # Open JSON file
-        json_file = json.load(input_file)   # Load JSON file
-    if os.path.exists(dummy_edl_file_path): os.remove(dummy_edl_file_path)      # Remove file if it exists
-
-    try:
-        with open(dummy_edl_file_path, 'a') as output_file: # Open EDL file
-            heading = 'TITLE: ' + os.path.splitext(dummy_edl_file_path)[0]+ '\n'\
-            'FCM: NON-DROP FRAME\n'     # Define EDL heading
-            output_file.write(heading)  # Write heading to EDL file
-            for i in range(len(json_file['events'])):   # Loop through JSON file
-                dummy_edl_file_line = create_string(
-                    ' ', 
-                    json_file['events'][i]['event_number'], 
-                    json_file['events'][i]['VFX ID'], 
-                    json_file['events'][i]['track'], 
-                    json_file['events'][i]['transition'], 
-                    json_file['events'][i]['source_start_TC'], 
-                    json_file['events'][i]['source_end_TC'],
-                    # str(Timecode(fps, json_file['events'][i]['source_end_TC']) - 1), # per gestire i consolidati senza maniglie... 
-                    json_file['events'][i]['record_start_TC'], 
-                    json_file['events'][i]['record_end_TC'],
-                )
-                # dummy_edl_file_line = json_file['events'][i]['event_number'] + ' ' + json_file['events'][i]['VFX ID'] + ' ' + json_file['events'][i]['track'] + ' ' + \
-                # json_file['events'][i]['transition'] + ' ' + json_file['events'][i]['source_start_TC'] + ' ' + json_file['events'][i]['source_end_TC'] + ' ' + \
-                # json_file['events'][i]['record_start_TC'] + ' ' + json_file['events'][i]['record_end_TC']   # Define EDL file line
-                output_file.write(dummy_edl_file_line + '\n')   # Write line to EDL file
-            print(f"Succesfully exported EDL file: {dummy_edl_file_path}")  # Print success message
-    except Exception as e:  # Catch exception
-        print(f"Error writing {dummy_edl_file_path}: {e}")      # Print error message
-
-
 def export_google_tab(json_file_path: str, google_file_path: str):
     """Export a TAB file to import into a Spreadsheet."""
     
@@ -523,8 +490,7 @@ def main():
     parser.add_argument('-m', '--markers', action='store_true', help='Export markers for AVID (interactive options)')
     parser.add_argument('-s', '--subcaps', action='store_true', help='Export subcaps file for AVID')
     parser.add_argument('-p', '--pulls', action='store_true', help='Export ALE file for creating pulls in AVID bin')
-    parser.add_argument('-x', '--edl_pulls', action='store_true', help='Export EDL for cutting in pulls in AVID')
-    parser.add_argument('-d', '--dummy_edl', action='store_true', help='Export Dummy EDL of VFX in AVID')
+    parser.add_argument('-c', '--edl_pulls', action='store_true', help='Export EDL for cutting in pulls in AVID')
     parser.add_argument('-g', '--google', action='store_true', help='Export TAB file to import into a Spreadsheet')
     parser.add_argument('-a', '--aaf', metavar='AAF', help='Export AAF with VFX ID clip notes, requires a source AAF')
     parser.add_argument('-f', '--final', metavar='BIN', help='Export EDL for cutting in final vfx in AVID, requires an AVID bin (TAB)')
@@ -587,11 +553,6 @@ def main():
         edl_dir = project['config']['edl_dir']
         edl_stem = os.path.splitext(project['config']['edl_file'])[0]
         export_pulls_edl(PROJECT_FILE, os.path.join(edl_dir, edl_stem + '_pulls.edl'))
-    elif args.dummy_edl:
-        project = load_project()
-        edl_dir = project['config']['edl_dir']
-        edl_stem = os.path.splitext(project['config']['edl_file'])[0]
-        export_dummy_edl(PROJECT_FILE, os.path.join(edl_dir, edl_stem + '_dummy.edl'))
     elif args.google:
         project = load_project()
         edl_dir = project['config']['edl_dir']
