@@ -34,7 +34,7 @@ Create an EDL (File_129 or CMX3600) from the Avid video track containing only sh
 
 VFX IDs are generated automatically based on scene numbers: `FILM_ID_Scene_num`, where `num` is a progressive number like 010, 020, 030, etc.
 
-Existing markers on the timeline are imported as existing VFX IDs (found in the EDL as `*LOC` lines). If you add VFX shots in Avid, add markers with their VFX IDs before re-importing.
+Existing markers on the timeline are imported as existing VFX IDs (found in the EDL as `*LOC` lines). If you add VFX shots in Avid, add markers with their new VFX IDs before re-importing.
 
 ![Configuration of the list tool in Avid Media Composer for EDL exporting](imgs/01_create_edl.png)
 
