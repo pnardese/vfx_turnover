@@ -117,7 +117,7 @@ vfx-turnover -f avid_bin.txt
 | `-p` | Export an ALE for creating pulls in Avid bin |
 | `-c` | Export an EDL for cutting in pulls |
 | `-t` | Export a TAB-delimited text file for spreadsheet import |
-| `-a source.aaf` | Export an AAF with VFX ID clip notes (requires source AAF) |
+| `-n source.aaf` | Export an AAF with VFX ID clip notes (requires source AAF) |
 | `-f avid_bin.txt` | Export an EDL to cut in final VFX shots (requires Avid bin TAB) |
 
 All exported files are saved in the same folder as the original EDL.
