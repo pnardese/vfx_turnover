@@ -21,63 +21,38 @@ pipx reinstall vfx-turnover
 
 ### Supported EDL Formats
 
-- **Avid FIle_129 EDL** - Standard Avid Media Composer EDL format
+- **Avid File_129 EDL** - Standard Avid Media Composer EDL format
 - **CMX3600 EDL** - Industry standard CMX3600 format
 
-### Options:
+---
 
-- import an EDL (Avid or CMX3600 format) and create a project file
+## Workflow Guide
+
+### 1. Create EDL from Avid
+
+Create an EDL (File_129 or CMX3600) from the Avid video track containing only shots planned for VFX. In List Options in Avid, check: **Clip Names**, **Source File Name**, and **Markers**.
+
+VFX IDs are generated automatically based on scene numbers: `FILM_ID_Scene_num`, where `num` is a progressive number like 010, 020, 030, etc.
+
+Existing markers on the timeline are imported as existing VFX IDs (found in the EDL as `*LOC` lines). If you add VFX shots in Avid, add markers with their VFX IDs before re-importing.
+
+![Configuration of the list tool in Avid Media Composer for EDL exporting](imgs/01_create_edl.png)
+
+Import the EDL into the project:
 ```
 vfx-turnover -e timeline.edl
 ```
-- export a marker text file for AVID (interactive options: user name, track, color, position)
+
+### 2. Export Markers and Subcaps
+
+Export markers and subcaps and import them into Avid to help keep track of VFX shots.
+
 ```
 vfx-turnover -m
-```
-- export a subcaps text file for AVID
-```
 vfx-turnover -s
 ```
-- export an ALE for creating pulls in AVID bin
-```
-vfx-turnover -p
-```
-- export an EDL for cutting in pulls
-```
-vfx-turnover -x
-```
-- export a dummy EDL to be used as a reference in AVID
-```
-vfx-turnover -d
-```
-- export a TAB delimited text file for importing it in a spreadsheet
-```
-vfx-turnover -g
-```
-- export an AAF with VFX ID clip notes, requires a source AAF
-```
-vfx-turnover -a source.aaf
-```
-- export an EDL to cut in final VFX shots, requires an AVID bin (TAB)
-```
-vfx-turnover -f avid_bin.txt
-```
 
-All exported files are saved in the same folder as the original EDL.
-
-### Parameters file
-
-The script persists project-specific settings in:
-
-```
-~/.config/vfx_turnover/vfx_project.json
-```
-
-This file is created automatically on first run and stores parameters such as the project name and other configuration values, so they don't need to be re-entered each session.
-
-### Markers export interactive options (`-m`):
-
-When exporting markers, the script prompts for the following options:
+When exporting markers (`-m`), the script prompts for:
 
 | Option | Choices | Default |
 |--------|---------|---------|
@@ -85,3 +60,83 @@ When exporting markers, the script prompts for the following options:
 | Track | `TC`, `V1`–`V8` | `V1` |
 | Marker color | `green`, `red`, `blue`, `cyan`, `magenta`, `yellow`, `black`, `white` | `green` |
 | Marker position | `start`, `middle` | `start` |
+
+### 3. Export Frames
+
+Export markers from Avid as JPGs to use them to build a VFX shots database.
+
+![Export settings for frame extraction at marker's position](imgs/02_export_frames.png)
+
+### 4. Export TAB Text File
+
+Export a TAB-delimited file with VFX IDs info, importable in any database or spreadsheet to build a VFX shot database.
+
+```
+vfx-turnover -g
+```
+
+### 5. Export ALE Pulls
+
+Export ALE Pulls to create pulls (subclips named with VFX IDs from master clips). After selecting master clips in the bin, drag the ALE file onto the bin. Import settings: *Merge events with known sources and automatically create subclips*.
+
+```
+vfx-turnover -p
+```
+
+![Import settings](imgs/03_merge_events_ale.png)
+
+### 6. Export Pulls EDL
+
+Export a Pulls EDL to create a timeline with pull subclips. Import the EDL into an Avid bin and relink to pull subclips using Names.
+
+```
+vfx-turnover -x
+```
+
+![Relink configuration](imgs/04_relink_edl_pulls_v02.png)
+
+### 7. VFX Cut-ins
+
+When you receive incoming VFX (`.mov` files), import them into Avid, then export the bin in TAB format. Use the TAB file to generate an EDL for cutting the VFX into the timeline. Required bin columns: **Color**, **Name**, **Duration**, **Start**, **End**, **Tape**.
+
+```
+vfx-turnover -f avid_bin.txt
+```
+
+![Columns to export from Avid bin as TAB text file](imgs/05_vfx_cutins.png)
+
+---
+
+## All Options
+
+| Option | Description |
+|--------|-------------|
+| `-e timeline.edl` | Import an EDL and create/update the project file |
+| `-m` | Export a marker text file for Avid (interactive options) |
+| `-s` | Export a subcaps text file for Avid |
+| `-p` | Export an ALE for creating pulls in Avid bin |
+| `-x` | Export an EDL for cutting in pulls |
+| `-d` | Export a dummy EDL to use as reference in Avid |
+| `-g` | Export a TAB-delimited text file for spreadsheet import |
+| `-a source.aaf` | Export an AAF with VFX ID clip notes (requires source AAF) |
+| `-f avid_bin.txt` | Export an EDL to cut in final VFX shots (requires Avid bin TAB) |
+
+All exported files are saved in the same folder as the original EDL.
+
+---
+
+## Settings
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| Film ID | Project identifier used in VFX IDs | `FILM_ID` |
+| FPS | Frame rate for timecode calculations | `24` |
+| Handles | Extra frames added to pulls | `10` |
+
+Project settings are persisted at:
+
+```
+~/.config/vfx_turnover/vfx_project.json
+```
+
+This file is created automatically on first run and stores parameters such as the project name and configuration values, so they don't need to be re-entered each session.

@@ -1,4 +1,5 @@
 .DS_Store
+/docs
 /test
 /screenshots avid
 # Byte-compiled / optimized / DLL files
