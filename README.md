@@ -59,7 +59,7 @@ When exporting markers (`-m`), the script prompts for:
 | AVID user name | any string | `vfx` |
 | Track | `TC`, `V1`–`V8` | `V1` |
 | Marker color | `green`, `red`, `blue`, `cyan`, `magenta`, `yellow`, `black`, `white` | `green` |
-| Marker position | `start`, `middle` | `start` |
+| Marker position | `start`, `middle` | `middle` |
 
 ### 3. Export AAF with Clip Notes
 
@@ -69,7 +69,15 @@ As an alternative to markers, VFX IDs can be embedded as clip notes directly on 
 vfx-turnover -n sequence.aaf
 ```
 
-The output AAF is saved next to the source file with `_notes` appended to the filename.
+The script automatically detects the video track from the AAF. It also writes timeline markers on the same track. The output AAF is saved next to the original EDL with `_new` appended to the filename (e.g. `VFX_48_new.aaf`).
+
+When running `-n`, the script prompts for:
+
+| Option | Choices | Default |
+|--------|---------|---------|
+| AVID user name | any string | `vfx` |
+| Marker color | `green`, `red`, `blue`, `cyan`, `magenta`, `yellow`, `black`, `white` | `green` |
+| Marker position | `start`, `middle` | `middle` |
 
 ### 4. Export Frames
 
