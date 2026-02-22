@@ -4,6 +4,8 @@ import argparse
 import os
 import sys
 import shutil
+import time
+import uuid
 import aaf2
 from timecode import Timecode
 from pandas import read_csv
@@ -160,6 +162,19 @@ MARKER_TRACKS = ['TC'] + [f'V{i}' for i in range(1, 9)]
 MARKER_COLORS = ['green', 'red', 'blue', 'cyan', 'magenta', 'yellow', 'black', 'white']
 MARKER_POSITIONS = ['start', 'middle']
 
+# Maps color name → (Avid string, RGB dict for CommentMarkerColor 16-bit).
+# Green values confirmed from VFX_48_markers.aaf reference.
+MARKER_COLOR_MAP = {
+    'green':   ('Green',   {'red': 13107, 'green': 52428, 'blue': 13107}),
+    'red':     ('Red',     {'red': 52428, 'green': 13107, 'blue': 13107}),
+    'blue':    ('Blue',    {'red': 13107, 'green': 13107, 'blue': 52428}),
+    'cyan':    ('Cyan',    {'red': 13107, 'green': 52428, 'blue': 52428}),
+    'magenta': ('Magenta', {'red': 52428, 'green': 13107, 'blue': 52428}),
+    'yellow':  ('Yellow',  {'red': 52428, 'green': 52428, 'blue': 13107}),
+    'black':   ('Black',   {'red': 0,     'green': 0,     'blue': 0}),
+    'white':   ('White',   {'red': 65535, 'green': 65535, 'blue': 65535}),
+}
+
 
 def prompt_choice(prompt: str, choices: list, default: str) -> str:
     """Prompt user to pick from a numbered list. Press Enter for default."""
@@ -182,11 +197,10 @@ def prompt_markers_options(config) -> tuple:
     """Interactive prompts for markers export options."""
     m = config.get('markers', DEFAULT_CONFIG['markers'])
     user = input(f"\nAVID user name [default: {m['user']}]: ").strip() or m['user']
-    track = prompt_choice("Track:", MARKER_TRACKS, m['track'])
     color = prompt_choice("Marker color:", MARKER_COLORS, m['color'])
     position = prompt_choice("Marker position:", MARKER_POSITIONS, m['position'])
     print()
-    return user, track, color, position
+    return user, color, position
 
 
 def json_to_markers(json_file_path: str, markers_file_path: str, user: str = 'vfx', track_number: str = 'V1', marker_color: str = 'green', position: str = 'start'):
@@ -349,16 +363,40 @@ def export_google_tab(json_file_path: str, google_file_path: str):
         print(f"Error writing {google_file_path}: {e}")  # Print error message
 
 
-def json_to_aaf(json_file_path: str, input_aaf_path: str, output_aaf_path: str):
-    """Copy an AAF and write VFX IDs from JSON as clip notes on each video clip."""
+def _ensure_descriptive_metadata_def(f):
+    """Register DescriptiveMetadata DataDef if missing.
+
+    Avid-produced AAFs store it as 'Descriptive Metadata' (with a space), which
+    pyaaf2's lookup_datadef() cannot resolve by the canonical name. Registering it
+    explicitly lets f.create.DescriptiveMarker() succeed on any input AAF.
+    """
+    try:
+        f.dictionary.lookup_datadef('DescriptiveMetadata')
+    except Exception:
+        dm_dd = f.create.DataDef(
+            "01030201-1000-0000-060e-2b3404010101",
+            "DataDef_DescriptiveMetadata",
+            "Descriptive metadata",
+        )
+        f.dictionary.register_def(dm_dd)
+
+
+def json_to_aaf(json_file_path: str, input_aaf_path: str, output_aaf_path: str,
+                user: str = 'vfx', color: str = 'green', position: str = 'start'):
+    """Copy an AAF and write VFX IDs from JSON as clip notes and timeline markers."""
 
     with open(json_file_path) as input_file:
         json_file = json.load(input_file)
     events = json_file['events']
 
+    color_str, color_rgb = MARKER_COLOR_MAP.get(color.lower(), MARKER_COLOR_MAP['green'])
+    now_ts = int(time.time())
+
     shutil.copy2(input_aaf_path, output_aaf_path)
 
     with aaf2.open(output_aaf_path, 'rw') as f:
+        _ensure_descriptive_metadata_def(f)
+
         for mob in f.content.toplevel():
             video_slot = None
             for slot in mob.slots:
@@ -372,11 +410,19 @@ def json_to_aaf(json_file_path: str, input_aaf_path: str, output_aaf_path: str):
             if not video_slot:
                 continue
 
+            video_slot_id = video_slot.slot_id
+            track_name = video_slot['SlotName'].value or f"V{video_slot['PhysicalTrackNumber'].value}"
+            print(f'  Detected track: {track_name}')
             clip_num = 0
+            timeline_pos = 0
+            marker_data = []  # list of (marker_frame, vfx_id)
+
             for comp in video_slot.segment.components:
                 comp_type = type(comp).__name__
+                length = getattr(comp, 'length', 0) or 0
 
                 if comp_type == 'Filler':
+                    timeline_pos += length
                     continue
 
                 if isinstance(comp, aaf2.components.SourceClip) and comp.mob:
@@ -403,6 +449,7 @@ def json_to_aaf(json_file_path: str, input_aaf_path: str, output_aaf_path: str):
                                 if clip_name:
                                     break
                 else:
+                    timeline_pos += length
                     continue
 
                 clip_num += 1
@@ -413,6 +460,7 @@ def json_to_aaf(json_file_path: str, input_aaf_path: str, output_aaf_path: str):
 
                 vfx_id = events[clip_num - 1]['VFX ID']
 
+                # Write clip note
                 attr_list = target.get('ComponentAttributeList')
                 if attr_list is None:
                     target['ComponentAttributeList'] = []
@@ -426,16 +474,72 @@ def json_to_aaf(json_file_path: str, input_aaf_path: str, output_aaf_path: str):
                         break
 
                 if not found:
-                    attr_list.append(aaf2.misc.TaggedValue(name='_COMMENT', value=vfx_id))
+                    tv = f.create.TaggedValue()
+                    tv['Name'].value = '_COMMENT'
+                    tv['Value'].value = vfx_id
+                    attr_list.append(tv)
 
-                print(f'  Clip {clip_num}: {clip_name} -> {vfx_id}')
+                # Compute marker frame position
+                marker_frame = timeline_pos + length // 2 if position == 'middle' else timeline_pos
+                marker_data.append((marker_frame, vfx_id))
+
+                print(f'  Clip {clip_num}: {clip_name} -> {vfx_id}  (marker @ frame {marker_frame})')
+                timeline_pos += length
 
             if clip_num < len(events):
                 print(f'  Warning: fewer clips ({clip_num}) than events ({len(events)})')
 
+            # Find or create EventMobSlot for markers
+            event_slot = None
+            for slot in mob.slots:
+                if type(slot).__name__ == 'EventMobSlot':
+                    event_slot = slot
+                    break
+
+            if event_slot is None:
+                existing_ids = {s.slot_id for s in mob.slots}
+                new_slot_id = max(existing_ids) + 1 if existing_ids else 1008
+                event_slot = f.create.EventMobSlot()
+                event_slot['SlotID'].value = new_slot_id
+                event_slot['EditRate'].value = video_slot.edit_rate
+                event_slot['SlotName'].value = ''
+                seq = f.create.Sequence(media_kind='DescriptiveMetadata')
+                seq['Components'].value = []
+                event_slot['Segment'].value = seq
+                mob.slots.append(event_slot)
+            else:
+                seq = event_slot.segment
+
+            # Build markers and assign all at once (StrongRefVectorProperty requires this)
+            new_markers = []
+            for marker_frame, vfx_id in marker_data:
+                marker = f.create.DescriptiveMarker()
+                marker['Length'].value = 1
+                marker['Position'].value = marker_frame
+                marker['Comment'].value = vfx_id
+                marker['CommentMarkerUSer'].value = user
+                marker['CommentMarkerColor'].value = color_rgb
+                marker['DescribedSlots'].value = {video_slot_id}
+                tv_list = []
+                for tv_name, tv_val in [
+                    ('_ATN_CRM_COLOR',           color_str),
+                    ('_ATN_CRM_COLOR_EXTENDED',   color_str),
+                    ('_ATN_CRM_USER',             user),
+                    ('_ATN_CRM_COM',              vfx_id),
+                    ('_ATN_CRM_LONG_CREATE_DATE', now_ts),
+                    ('_ATN_CRM_LONG_MOD_DATE',    now_ts),
+                    ('_ATN_CRM_LENGTH',           1),
+                    ('_ATN_CRM_ID',               uuid.uuid4().hex),
+                ]:
+                    tv_list.append(f.create.TaggedValue(tv_name, tv_val))
+                marker['CommentMarkerAttributeList'].value = tv_list
+                new_markers.append(marker)
+
+            seq['Components'].value = new_markers
+
         f.save()
 
-    print(f'\nAdded {clip_num} VFX ID clip notes to {output_aaf_path}')
+    print(f'\nAdded {clip_num} VFX ID clip notes and {len(marker_data)} markers to {output_aaf_path}')
 
 
 def export_final_vfx_edl(json_file_path: str, final_vfx_bin: str, edl_final_file_path: str):
@@ -562,7 +666,10 @@ def main():
         project = load_project()
         edl_dir = project['config']['edl_dir']
         edl_stem = os.path.splitext(project['config']['edl_file'])[0]
-        json_to_aaf(PROJECT_FILE, args.aaf, os.path.join(edl_dir, edl_stem + '_notes.aaf'))
+        user, color, position = prompt_markers_options(project['config'])
+        project['config']['markers'] = {'user': user, 'color': color, 'position': position}
+        save_project(project)
+        json_to_aaf(PROJECT_FILE, args.aaf, os.path.join(edl_dir, edl_stem + '_new.aaf'), user, color, position)
     elif args.final:
         project = load_project()
         edl_dir = project['config']['edl_dir']
