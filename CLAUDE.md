@@ -34,24 +34,22 @@ various files: markers, subcaps, ALE pulls, EDLs, AAF with clip notes, and sprea
 
 ## Web App Integration Notes
 
-The companion web app lives at `~/Documents/dev/web-vfx-turnover/web_vfx_turnover/index.html`.
+The companion web app lives at `/Users/enzo/Documents/dev/python/web_vfx_turnover/index.html`.
 It is a single-file static React app (no build step, no server) that reimplements all CLI
 exports as in-browser JavaScript. All exports use the same pattern: generate text content,
 download via Blob + ObjectURL.
 
 ### `-f` (export_final_vfx_edl)
-Can be ported to JavaScript. The only dependency is `pandas.read_csv` for TSV parsing,
-which is trivial to replace with a split-by-tab parser. The web app already loads the
-Avid bin TAB file (`binData` state). This export is a straightforward JS addition.
+Ported to JavaScript in the web app. The Avid bin TAB file is loaded as `binData` state
+and parsed with a split-by-tab parser (no pandas dependency).
 
 ### `-n` (json_to_aaf — AAF clip notes)
 **Cannot run in the browser.** Requires `pyaaf2`, a C extension that reads/writes binary
-Microsoft Structured Storage (AAF) format. No JS equivalent exists. Pyodide won't work
-because of the compiled C extension.
+Microsoft Structured Storage (AAF) format. No JS equivalent exists.
 
-**Planned approach: Flask microservice (local)**
-- Small Flask API runs locally alongside the web app
-- Endpoint: `POST /export-aaf` — accepts multipart (source AAF + JSON VFX IDs), returns modified AAF
-- Web app adds an AAF upload zone and calls the local endpoint; all other exports remain client-side
-- Web app should gracefully degrade when the server is not running (show an informative message)
-- The Flask server is only required for this one feature
+**Implemented as Flask microservice (local)** — `server.py` + `launch.sh`:
+- Endpoint: `POST /export-aaf` — accepts multipart (source AAF + JSON VFX IDs + options), returns modified AAF
+- Options: `user`, `color`, `position`, `include_markers`, `clip_color`
+- Web app has AAF upload zone, server online/offline badge, and graceful degradation
+- `launch.sh` starts server on port 5000 (skips if already running) and opens `index.html`
+- Supports clip color: writes `_COLOR_R/G/B` TaggedValues (32 Avid colors) on each clip
