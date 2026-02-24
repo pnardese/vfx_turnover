@@ -31,6 +31,7 @@ DEFAULT_CONFIG = {
         'track': 'V1',
         'color': 'green',
         'position': 'start',
+        'clip_color': 'none',
     }
 }
 
@@ -175,6 +176,44 @@ MARKER_COLOR_MAP = {
     'white':   ('White',   {'red': 65535, 'green': 65535, 'blue': 65535}),
 }
 
+# Maps Avid clip color name → (r16, g16, b16) stored in _COLOR_R/G/B TaggedValues.
+# Values are 8-bit × 256. Extracted from VFX_48.Colore.aaf reference file.
+CLIP_COLOR_MAP = {
+    'dark blue':     (14592, 11776, 38144),
+    'steel blue':    (15104, 25344, 37888),
+    'dark green':    (16896, 32768, 13824),
+    'cyan':          (16896, 54272, 62464),
+    'teal':          (17920, 39168, 36864),
+    'blue':          (22528, 17920, 58624),
+    'dark grey':     (22784, 22784, 22784),
+    'sky blue':      (23040, 38912, 58112),
+    'green':         (25856, 50432, 21248),
+    'dark purple':   (32256, 12544, 26880),
+    'dark brown':    (32256, 20992, 13568),
+    'olive':         (32256, 32768, 14336),
+    'dark red':      (32768,  9216,  9216),
+    'purple':        (36608,     0, 45824),
+    'mint':          (43520, 65280, 49920),
+    'crimson':       (48896,     0, 26112),
+    'sand':          (48896, 43264, 36608),
+    'light grey':    (48896, 48896, 48896),
+    'violet':        (49408, 19200, 41216),
+    'yellow-olive':  (49408, 50176, 22016),
+    'brown':         (49664, 32256, 20992),
+    'medium red':    (51200, 14592, 14592),
+    'beige':         (56064, 55296, 47104),
+    'light red':     (56832, 25600, 29696),
+    'gold':          (58368, 50688,     0),
+    'lavender':      (58880, 48640, 65280),
+    'magenta':       (61440, 12800, 58880),
+    'yellow-green':  (61952, 65280, 16384),
+    'orange':        (62720, 33280, 12544),
+    'pink':          (64000, 48640, 48640),
+    'rose':          (65280,     0, 29440),
+    'light orange':  (65280, 50176, 32768),
+}
+CLIP_COLORS = ['none'] + list(CLIP_COLOR_MAP.keys())
+
 
 def prompt_choice(prompt: str, choices: list, default: str) -> str:
     """Prompt user to pick from a numbered list. Press Enter for default."""
@@ -201,6 +240,71 @@ def prompt_markers_options(config) -> tuple:
     position = prompt_choice("Marker position:", MARKER_POSITIONS, m['position'])
     print()
     return user, color, position
+
+
+def _rgb_to_ansi256(r: int, g: int, b: int) -> int:
+    """Return the nearest xterm 256-colour palette index for an sRGB colour."""
+    levels = [0, 95, 135, 175, 215, 255]
+    def snap(v): return min(range(6), key=lambda i: abs(levels[i] - v))
+    ri, gi, bi = snap(r), snap(g), snap(b)
+    cube_idx = 16 + 36 * ri + 6 * gi + bi
+    d_cube = (r - levels[ri]) ** 2 + (g - levels[gi]) ** 2 + (b - levels[bi]) ** 2
+    gray = round(r * 0.299 + g * 0.587 + b * 0.114)
+    gray_idx = 232 + min(23, max(0, round((max(8, min(238, gray)) - 8) / 10)))
+    gray_val = 8 + (gray_idx - 232) * 10
+    d_gray = (r - gray_val) ** 2 + (g - gray_val) ** 2 + (b - gray_val) ** 2
+    return gray_idx if d_gray < d_cube else cube_idx
+
+
+def prompt_clip_color(default: str) -> str:
+    """Prompt for clip color using a 4-column grid with ANSI color patches."""
+    is_tty = sys.stdout.isatty() and os.environ.get('TERM', 'dumb') != 'dumb' and not os.environ.get('NO_COLOR')
+    use_truecolor = is_tty and os.environ.get('COLORTERM', '').lower() in ('truecolor', '24bit')
+    cols = 4
+    col_width = max(len(n) for n in CLIP_COLORS) + 1  # pad names to uniform width
+
+    def make_patch(name: str) -> str:
+        if not is_tty:
+            return '--' if name == 'none' else '  '
+        if name == 'none':
+            return '\033[2m--\033[0m'
+        r16, g16, b16 = CLIP_COLOR_MAP[name]
+        r, g, b = r16 // 256, g16 // 256, b16 // 256
+        if use_truecolor:
+            return f'\033[48;2;{r};{g};{b}m  \033[0m'
+        return f'\033[48;5;{_rgb_to_ansi256(r, g, b)}m  \033[0m'
+
+    print("\nClip color:")
+    for row_start in range(0, len(CLIP_COLORS), cols):
+        row_items = CLIP_COLORS[row_start:row_start + cols]
+        line = ''
+        for idx, name in enumerate(row_items):
+            num = row_start + idx + 1
+            marker = '*' if name == default else ' '
+            patch = make_patch(name)
+            line += f' {marker}{num:>2}) {patch} {name:<{col_width}}'
+        print(line)
+
+    while True:
+        raw = input(f"\nChoice [default: {default}]: ").strip()
+        if not raw:
+            return default
+        if raw.isdigit() and 1 <= int(raw) <= len(CLIP_COLORS):
+            return CLIP_COLORS[int(raw) - 1]
+        if raw.lower() in [c.lower() for c in CLIP_COLORS]:
+            return next(c for c in CLIP_COLORS if c.lower() == raw.lower())
+        print(f"  Invalid. Enter 1-{len(CLIP_COLORS)} or a color name.")
+
+
+def prompt_aaf_options(config) -> tuple:
+    """Interactive prompts for AAF clip notes export options (marker + clip color)."""
+    m = config.get('markers', DEFAULT_CONFIG['markers'])
+    user = input(f"\nAVID user name [default: {m['user']}]: ").strip() or m['user']
+    color = prompt_choice("Marker color:", MARKER_COLORS, m['color'])
+    position = prompt_choice("Marker position:", MARKER_POSITIONS, m['position'])
+    clip_color = prompt_clip_color(m.get('clip_color', 'none'))
+    print()
+    return user, color, position, clip_color
 
 
 def json_to_markers(json_file_path: str, markers_file_path: str, user: str = 'vfx', track_number: str = 'V1', marker_color: str = 'green', position: str = 'start'):
@@ -384,7 +488,8 @@ def _ensure_descriptive_metadata_def(f):
 
 
 def json_to_aaf(json_file_path: str, input_aaf_path: str, output_aaf_path: str,
-                user: str = 'vfx', color: str = 'green', position: str = 'start'):
+                user: str = 'vfx', color: str = 'green', position: str = 'start',
+                clip_color: str = 'none'):
     """Copy an AAF and write VFX IDs from JSON as clip notes and timeline markers."""
 
     with open(json_file_path) as input_file:
@@ -480,6 +585,22 @@ def json_to_aaf(json_file_path: str, input_aaf_path: str, output_aaf_path: str,
                     tv['Name'].value = '_COMMENT'
                     tv['Value'].value = vfx_id
                     attr_list.append(tv)
+
+                # Write clip color
+                if clip_color != 'none':
+                    r16, g16, b16 = CLIP_COLOR_MAP[clip_color.lower()]
+                    color_vals = {'_COLOR_R': r16, '_COLOR_G': g16, '_COLOR_B': b16}
+                    found_keys = set()
+                    for attr in attr_list:
+                        if attr.name in color_vals:
+                            attr.value = color_vals[attr.name]
+                            found_keys.add(attr.name)
+                    for name, val in color_vals.items():
+                        if name not in found_keys:
+                            tv = f.create.TaggedValue()
+                            tv['Name'].value = name
+                            tv['Value'].value = val
+                            attr_list.append(tv)
 
                 # Compute marker frame position
                 marker_frame = timeline_pos + length // 2 if position == 'middle' else timeline_pos
@@ -668,10 +789,10 @@ def main():
         project = load_project()
         edl_dir = project['config']['edl_dir']
         edl_stem = os.path.splitext(project['config']['edl_file'])[0]
-        user, color, position = prompt_markers_options(project['config'])
-        project['config']['markers'] = {'user': user, 'color': color, 'position': position}
+        user, color, position, clip_color = prompt_aaf_options(project['config'])
+        project['config']['markers'] = {'user': user, 'color': color, 'position': position, 'clip_color': clip_color}
         save_project(project)
-        json_to_aaf(PROJECT_FILE, args.aaf, os.path.join(edl_dir, edl_stem + '_new.aaf'), user, color, position)
+        json_to_aaf(PROJECT_FILE, args.aaf, os.path.join(edl_dir, edl_stem + '_new.aaf'), user, color, position, clip_color)
     elif args.final:
         project = load_project()
         edl_dir = project['config']['edl_dir']

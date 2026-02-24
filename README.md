@@ -78,6 +78,9 @@ When running `-n`, the script prompts for:
 | AVID user name | any string | `vfx` |
 | Marker color | `green`, `red`, `blue`, `cyan`, `magenta`, `yellow`, `black`, `white` | `green` |
 | Marker position | `start`, `middle` | `middle` |
+| Clip color | `none`, or any of 32 Avid clip colors | `none` |
+
+The clip color prompt displays a 4-column grid with color swatches. Colors are written as `_COLOR_R/G/B` tagged values in the AAF's `ComponentAttributeList`, matching the format Avid uses natively.
 
 ### 4. Export Frames
 
