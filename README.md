@@ -110,7 +110,7 @@ The exported file contains one row per shot with the following columns:
 | `Start` | Source start timecode |
 | `End` | Source end timecode |
 | `Frame Count Duration` | Duration in frames |
-| `Handles` | Handle frames configured for the project |
+| `Pull Handles` | Handle frames configured for the project |
 | `Tape` | Source reel / tape name |
 
 ### 6. Export ALE Pulls
@@ -168,7 +168,7 @@ All exported files are saved in the same folder as the original EDL.
 |---------|-------------|---------|
 | Film ID | Project identifier used in VFX IDs | `FILM_ID` |
 | FPS | Frame rate for timecode calculations | `24` |
-| Handles | Extra frames added to pulls | `10` |
+| Pull Handles | Extra frames added to pulls | `10` |
 
 Project settings are persisted at:
 
