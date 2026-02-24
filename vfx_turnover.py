@@ -332,7 +332,7 @@ def export_google_tab(json_file_path: str, google_file_path: str):
     try:
         with open(google_file_path, 'a') as output_file:    # Open TAB file
             heading = '#' + '\t' + 'Name' + '\t' + 'Frame' + '\t' + 'Comments' + '\t' + 'Status' + '\t' + 'Date' + '\t' + 'Duration' + '\t' + 'Start' + '\t' +\
-            'End' + '\t' + 'Frame Count Duration' + '\t' + 'Tape'   # Define TAB heading
+            'End' + '\t' + 'Frame Count Duration' + '\t' + 'Handles' + '\t' + 'Tape'   # Define TAB heading
             output_file.write(heading + '\n')   # Write heading to TAB file
             counter = 1  # Define counter of events in JSON file
             for i in range(len(json_file['events'])):   # Loop through JSON file
@@ -341,17 +341,19 @@ def export_google_tab(json_file_path: str, google_file_path: str):
                 duration = end_TC - start_TC    # Define duration
                 number_of_frames = duration.frames  # Define number of frames
                 google_file_line = create_string(
-                    '\t', 
-                    str(counter), 
-                    json_file['events'][i]['VFX ID'], 
-                    '', 
-                    '', 
-                    '', 
-                    str(duration), 
+                    '\t',
+                    str(counter),
+                    json_file['events'][i]['VFX ID'],
+                    '',
+                    '',
+                    '',
+                    '',
+                    str(duration),
                     json_file['events'][i]['source_start_TC'],
                     json_file['events'][i]['source_end_TC'],
                     # str(Timecode(fps, json_file['events'][i]['source_end_TC']) - 1), # per gestire i consolidati senza maniglie...
                     str(number_of_frames),
+                    str(handles),
                     json_file['events'][i]['reel'],
                 )
                 # google_file_line = str(counter) + '\t' +  json_file['events'][i]['VFX ID'] + '\t' + '\t' + '\t' + '\t' + '\t' + str(duration) + '\t' + json_file['events'][i]['source_start_TC'] + '\t' +\
