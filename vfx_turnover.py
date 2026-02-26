@@ -522,7 +522,19 @@ def json_to_aaf(json_file_path: str, input_aaf_path: str, output_aaf_path: str,
             print(f'  Detected track: {track_name}')
             clip_num = 0
             timeline_pos = 0
-            marker_data = []  # list of (marker_frame, vfx_id)
+            marker_data = []   # list of (marker_frame, vfx_id) for clips needing new markers
+            kept_markers = []  # existing marker objects to preserve as-is
+
+            # Pre-collect existing markers by position for preservation
+            existing_markers_by_pos = {}
+            for slot in mob.slots:
+                if type(slot).__name__ == 'EventMobSlot':
+                    for m in slot.segment.components:
+                        try:
+                            existing_markers_by_pos[m['Position'].value] = m
+                        except Exception:
+                            pass
+                    break
 
             for comp in video_slot.segment.components:
                 comp_type = type(comp).__name__
@@ -566,25 +578,46 @@ def json_to_aaf(json_file_path: str, input_aaf_path: str, output_aaf_path: str,
                     break
 
                 vfx_id = events[clip_num - 1]['VFX ID']
+                has_clip_note = events[clip_num - 1].get('has_clip_note', False)
 
-                # Write clip note
+                # Check for existing marker at this clip's position directly in the AAF
+                existing_marker = None
+                marker_vfx_id = None
+                for pos, m in existing_markers_by_pos.items():
+                    if timeline_pos <= pos < timeline_pos + length:
+                        existing_marker = m
+                        attrs = m.get('CommentMarkerAttributeList')
+                        if attrs:
+                            for tag in attrs:
+                                if tag.name == '_ATN_CRM_COM' and tag.value:
+                                    marker_vfx_id = tag.value
+                                    break
+                        break
+
+                # VFX ID: use marker's if available, else fall back to JSON
+                effective_vfx_id = marker_vfx_id if marker_vfx_id else vfx_id
+
+                # Get or create ComponentAttributeList (needed for both clip note and clip color)
                 attr_list = target.get('ComponentAttributeList')
                 if attr_list is None:
                     target['ComponentAttributeList'] = []
                     attr_list = target['ComponentAttributeList']
 
-                found = False
-                for attr in attr_list:
-                    if attr.name == '_COMMENT':
-                        attr.value = vfx_id
-                        found = True
-                        break
-
-                if not found:
-                    tv = f.create.TaggedValue()
-                    tv['Name'].value = '_COMMENT'
-                    tv['Value'].value = vfx_id
-                    attr_list.append(tv)
+                # Write clip note:
+                # - If clip has an existing marker: always write/update note with marker's VFX ID
+                # - Otherwise: write only if no clip note exists yet
+                if existing_marker is not None or not has_clip_note:
+                    found = False
+                    for attr in attr_list:
+                        if attr.name == '_COMMENT':
+                            attr.value = effective_vfx_id
+                            found = True
+                            break
+                    if not found:
+                        tv = f.create.TaggedValue()
+                        tv['Name'].value = '_COMMENT'
+                        tv['Value'].value = effective_vfx_id
+                        attr_list.append(tv)
 
                 # Write clip color
                 if clip_color != 'none':
@@ -602,11 +635,17 @@ def json_to_aaf(json_file_path: str, input_aaf_path: str, output_aaf_path: str,
                             tv['Value'].value = val
                             attr_list.append(tv)
 
-                # Compute marker frame position
-                marker_frame = timeline_pos + length // 2 if position == 'middle' else timeline_pos
-                marker_data.append((marker_frame, vfx_id))
+                # Marker: preserve existing or queue a new one
+                if existing_marker is not None:
+                    kept_markers.append(existing_marker)
+                    mark_str = 'kept'
+                else:
+                    marker_frame = timeline_pos + length // 2 if position == 'middle' else timeline_pos
+                    marker_data.append((marker_frame, effective_vfx_id))
+                    mark_str = f'new @ {marker_frame}'
 
-                print(f'  Clip {clip_num}: {clip_name} -> {vfx_id}  (marker @ frame {marker_frame})')
+                note_str = 'updated' if existing_marker is not None else ('kept' if has_clip_note else 'new')
+                print(f'  Clip {clip_num}: {clip_name} -> {effective_vfx_id}  (note: {note_str}, marker: {mark_str})')
                 timeline_pos += length
 
             if clip_num < len(events):
@@ -658,11 +697,12 @@ def json_to_aaf(json_file_path: str, input_aaf_path: str, output_aaf_path: str,
                 marker['CommentMarkerAttributeList'].value = tv_list
                 new_markers.append(marker)
 
-            seq['Components'].value = new_markers
+            all_markers = sorted(kept_markers + new_markers, key=lambda m: m['Position'].value)
+            seq['Components'].value = all_markers
 
         f.save()
 
-    print(f'\nAdded {clip_num} VFX ID clip notes and {len(marker_data)} markers to {output_aaf_path}')
+    print(f'\nProcessed {clip_num} clips: {len(marker_data)} new markers, {len(kept_markers)} preserved → {output_aaf_path}')
 
 
 def aaf_to_json(aaf_file: str) -> dict:
@@ -721,6 +761,23 @@ def aaf_to_json(aaf_file: str) -> dict:
         event_num = 0
         timeline_pos = 0
 
+        # Collect existing markers from EventMobSlot for VFX ID reuse detection
+        existing_markers = {}  # {position: vfx_id}
+        for slot in main_mob.slots:
+            if type(slot).__name__ == 'EventMobSlot':
+                for marker in slot.segment.components:
+                    attrs = marker.get('CommentMarkerAttributeList')
+                    if attrs:
+                        try:
+                            pos = marker['Position'].value
+                        except Exception:
+                            continue
+                        for tag in attrs:
+                            if tag.name == '_ATN_CRM_COM' and tag.value:
+                                existing_markers[pos] = tag.value
+                                break
+                break
+
         for comp in video_slot.segment.components:
             comp_type = type(comp).__name__
             length = getattr(comp, 'length', 0) or 0
@@ -730,14 +787,19 @@ def aaf_to_json(aaf_file: str) -> dict:
                 continue
 
             # Resolve SourceClip reference through Selector / OperationGroup wrappers
+            # target_comp holds ComponentAttributeList (_COMMENT lives on Selector, not inner clip)
+            target_comp = None
             source_clip = None
             if isinstance(comp, aaf2.components.SourceClip) and comp.mob:
+                target_comp = comp
                 source_clip = comp
             elif comp_type == 'Selector':
+                target_comp = comp  # _COMMENT lives on Selector
                 sel = comp['Selected'].value
                 if isinstance(sel, aaf2.components.SourceClip) and sel.mob:
                     source_clip = sel
             elif comp_type == 'OperationGroup':
+                target_comp = comp
                 segments = comp.get('InputSegments')
                 if segments:
                     for seg in segments:
@@ -830,7 +892,25 @@ def aaf_to_json(aaf_file: str) -> dict:
             rec_start_tc = str(base_tc + timeline_pos)
             rec_end_tc = str(base_tc + (timeline_pos + length))
 
+            # Check for existing clip note (_COMMENT on ComponentAttributeList)
+            clip_note_id = None
+            if target_comp is not None:
+                attr_list = target_comp.get('ComponentAttributeList')
+                if attr_list:
+                    for attr in attr_list:
+                        if attr.name == '_COMMENT' and attr.value:
+                            clip_note_id = attr.value
+                            break
+
+            # Check for existing marker within this clip's timeline range
+            marker_id = None
+            for pos, vid in existing_markers.items():
+                if timeline_pos <= pos < timeline_pos + length:
+                    marker_id = vid
+                    break
+
             # Generate VFX ID from subclip name (has scene number, same as *FROM CLIP NAME in EDL)
+            # Always advance counter so new clips get the correct next ID even if some have existing IDs
             scene_match = re.search(r'\d+', clip_name)
             scene_clip = scene_match.group().rjust(3, '0') if scene_match else str(event_num + 1).rjust(3, '0')
 
@@ -841,7 +921,9 @@ def aaf_to_json(aaf_file: str) -> dict:
             last_scene = scene_clip
 
             event_num += 1
-            vfx_id = create_string('_', FilmID, scene_clip, str(VFX_counter).rjust(3, '0'))
+            generated_id = create_string('_', FilmID, scene_clip, str(VFX_counter).rjust(3, '0'))
+            # Use existing VFX ID if found (clip note takes priority over marker); otherwise generated
+            vfx_id = clip_note_id or marker_id or generated_id
 
             event = {
                 "type": "event",
@@ -857,9 +939,17 @@ def aaf_to_json(aaf_file: str) -> dict:
                 "LOC": "",
                 "SOURCE": reel_name,
                 "VFX ID": vfx_id,
+                "has_clip_note": bool(clip_note_id),
+                "has_marker": bool(marker_id),
             }
             edl_data["events"].append(event)
-            print(f"  Event {event_num}: {clip_name} -> {vfx_id}  [{rec_start_tc} - {rec_end_tc}]")
+            status = []
+            if clip_note_id:
+                status.append('note')
+            if marker_id:
+                status.append('marker')
+            status_str = f' [existing: {", ".join(status)}]' if status else ''
+            print(f"  Event {event_num}: {clip_name} -> {vfx_id}  [{rec_start_tc} - {rec_end_tc}]{status_str}")
             timeline_pos += length
 
     print(f"\nFound {event_num} clips in AAF timeline.")
@@ -915,6 +1005,7 @@ def main():
     parser = argparse.ArgumentParser(description='Import EDL, create project and export various stuff for AVID')
 
     parser.add_argument('-e', '--edl', metavar='EDL', help='Import an EDL and create a project file')
+    parser.add_argument('-a', '--aaf_read', metavar='AAF', help='Import an AAF timeline, create project and export a new AAF with VFX ID clip notes')
     parser.add_argument('-m', '--markers', action='store_true', help='Export markers for AVID (interactive options)')
     parser.add_argument('-s', '--subcaps', action='store_true', help='Export subcaps file for AVID')
     parser.add_argument('-p', '--pulls', action='store_true', help='Export ALE file for creating pulls in AVID bin')
@@ -922,7 +1013,6 @@ def main():
     parser.add_argument('-t', '--google', action='store_true', help='Export TAB file to import into a Spreadsheet')
     parser.add_argument('-n', '--aaf', metavar='AAF', help='Export AAF with VFX ID clip notes, requires a source AAF')
     parser.add_argument('-f', '--final', metavar='BIN', help='Export EDL for cutting in final vfx in AVID, requires an AVID bin (TAB)')
-    parser.add_argument('-a', '--aaf_read', metavar='AAF', help='Import an AAF timeline, create project and export a new AAF with VFX ID clip notes')
 
     args = parser.parse_args()
 
