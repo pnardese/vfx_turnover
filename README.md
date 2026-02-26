@@ -1,6 +1,6 @@
 ## Python script to help manage the VFX workflow in Avid Media Composer
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE.md)
 
 ### Installation
 
