@@ -665,6 +665,207 @@ def json_to_aaf(json_file_path: str, input_aaf_path: str, output_aaf_path: str,
     print(f'\nAdded {clip_num} VFX ID clip notes and {len(marker_data)} markers to {output_aaf_path}')
 
 
+def aaf_to_json(aaf_file: str) -> dict:
+    """Read an AAF timeline with pyaaf2, extract clips, and return event data like edl_to_json."""
+
+    edl_data = {
+        "edl_metadata": {
+            "edl_title": os.path.splitext(os.path.basename(aaf_file))[0],
+            "edl_fcm": "NON-DROP FRAME",
+        },
+        "events": [],
+    }
+
+    last_scene = '0'
+    VFX_counter = 10
+
+    with aaf2.open(aaf_file, 'r') as f:
+        # Find the main CompositionMob with a video track
+        main_mob = None
+        for mob in f.content.toplevel():
+            for slot in mob.slots:
+                if not hasattr(slot.segment, 'components'):
+                    continue
+                media_kind = getattr(slot, 'media_kind', None)
+                if media_kind and 'picture' in str(media_kind).lower():
+                    main_mob = mob
+                    break
+            if main_mob:
+                break
+
+        if main_mob is None:
+            print("Error: no video timeline found in AAF", file=sys.stderr)
+            sys.exit(1)
+
+        # Find video slot
+        video_slot = None
+        for slot in main_mob.slots:
+            if not hasattr(slot.segment, 'components'):
+                continue
+            media_kind = getattr(slot, 'media_kind', None)
+            if media_kind and 'picture' in str(media_kind).lower():
+                video_slot = slot
+                break
+
+        # Get sequence start TC from Timecode slot (default 01:00:00:00 = Avid standard)
+        tc_start_str = '01:00:00:00'
+        for slot in main_mob.slots:
+            if type(slot.segment).__name__ == 'Timecode':
+                try:
+                    tc_start_str = str(Timecode(fps, frames=slot.segment['Start'].value + 1))
+                except Exception:
+                    pass
+                break
+
+        base_tc = Timecode(fps, tc_start_str)
+        event_num = 0
+        timeline_pos = 0
+
+        for comp in video_slot.segment.components:
+            comp_type = type(comp).__name__
+            length = getattr(comp, 'length', 0) or 0
+
+            if comp_type == 'Filler':
+                timeline_pos += length
+                continue
+
+            # Resolve SourceClip reference through Selector / OperationGroup wrappers
+            source_clip = None
+            if isinstance(comp, aaf2.components.SourceClip) and comp.mob:
+                source_clip = comp
+            elif comp_type == 'Selector':
+                sel = comp['Selected'].value
+                if isinstance(sel, aaf2.components.SourceClip) and sel.mob:
+                    source_clip = sel
+            elif comp_type == 'OperationGroup':
+                segments = comp.get('InputSegments')
+                if segments:
+                    for seg in segments:
+                        if isinstance(seg, aaf2.components.SourceClip) and seg.mob:
+                            source_clip = seg
+                            break
+                        if hasattr(seg, 'components'):
+                            for sc in seg.components:
+                                if isinstance(sc, aaf2.components.SourceClip) and sc.mob:
+                                    source_clip = sc
+                                    break
+                            if source_clip:
+                                break
+
+            if source_clip is None:
+                timeline_pos += length
+                continue
+
+            # Timeline SourceClip start offset (comp.start; comp['StartTime'] is not accessible via [])
+            src_offset = getattr(source_clip, 'start', 0) or 0
+
+            # subclip = SubClip CompositionMob (scene-based clip name, e.g. "33-2-/01 A")
+            subclip = source_clip.mob
+            clip_name = subclip.name or ''
+
+            # Navigate: SubClip → picture slot SourceClip → MasterMob
+            master_mob = None
+            sub_sc_start = 0
+            for sub_slot in subclip.slots:
+                if 'picture' not in str(getattr(sub_slot, 'media_kind', '')).lower():
+                    continue
+                sub_seg = sub_slot.segment
+                if isinstance(sub_seg, aaf2.components.SourceClip) and sub_seg.mob:
+                    for p in sub_seg.properties():
+                        if p.name == 'StartTime':
+                            sub_sc_start = p.value or 0
+                            break
+                    master_mob = sub_seg.mob
+                    break
+
+            # Navigate: MasterMob → picture Sequence SourceClip → CDCIDescriptor SourceMob
+            cdi_mob = None
+            master_sc_start = 0
+            if master_mob:
+                for m_slot in master_mob.slots:
+                    if 'picture' not in str(getattr(m_slot, 'media_kind', '')).lower():
+                        continue
+                    m_seg = m_slot.segment
+                    if hasattr(m_seg, 'components'):
+                        for sc in m_seg.components:
+                            if isinstance(sc, aaf2.components.SourceClip) and sc.mob:
+                                for p in sc.properties():
+                                    if p.name == 'StartTime':
+                                        master_sc_start = p.value or 0
+                                        break
+                                cdi_mob = sc.mob
+                                break
+                    break
+
+            # Navigate: CDCIDescriptor SourceMob → picture Sequence SourceClip → TapeDescriptor SourceMob
+            # The SourceClip.StartTime here is the key tape offset for source TC calculation
+            tape_mob = None
+            cdi_sc_start = 0
+            if cdi_mob:
+                for c_slot in cdi_mob.slots:
+                    if 'picture' not in str(getattr(c_slot, 'media_kind', '')).lower():
+                        continue
+                    c_seg = c_slot.segment
+                    if hasattr(c_seg, 'components'):
+                        for sc in c_seg.components:
+                            if isinstance(sc, aaf2.components.SourceClip):
+                                for p in sc.properties():
+                                    if p.name == 'StartTime':
+                                        cdi_sc_start = p.value or 0
+                                        break
+                                tape_mob = sc.mob  # may be None for offline media
+                                break
+                    break
+
+            # Reel name: TapeDescriptor mob name (e.g. "A059_A006_0519W9_001"), matches EDL reel column
+            reel_name = (tape_mob.name if tape_mob else None) or (master_mob.name if master_mob else None) or clip_name
+
+            # Source TC: accumulate offsets through the full chain
+            # cdi_sc_start is the tape frame offset; src_offset is the usage start within the subclip
+            total_offset = cdi_sc_start + master_sc_start + sub_sc_start + src_offset
+            src_start_tc = str(Timecode(fps, frames=total_offset + 1))
+            src_end_tc = str(Timecode(fps, src_start_tc) + length)
+
+            # Record TCs computed from sequence start + cumulative timeline position
+            rec_start_tc = str(base_tc + timeline_pos)
+            rec_end_tc = str(base_tc + (timeline_pos + length))
+
+            # Generate VFX ID from subclip name (has scene number, same as *FROM CLIP NAME in EDL)
+            scene_match = re.search(r'\d+', clip_name)
+            scene_clip = scene_match.group().rjust(3, '0') if scene_match else str(event_num + 1).rjust(3, '0')
+
+            if scene_clip == last_scene:
+                VFX_counter += 10
+            else:
+                VFX_counter = 10
+            last_scene = scene_clip
+
+            event_num += 1
+            vfx_id = create_string('_', FilmID, scene_clip, str(VFX_counter).rjust(3, '0'))
+
+            event = {
+                "type": "event",
+                "event_number": str(event_num),
+                "reel": reel_name,
+                "track": "V",
+                "transition": "C",
+                "source_start_TC": src_start_tc,
+                "source_end_TC": src_end_tc,
+                "record_start_TC": rec_start_tc,
+                "record_end_TC": rec_end_tc,
+                "FROM": clip_name,
+                "LOC": "",
+                "SOURCE": reel_name,
+                "VFX ID": vfx_id,
+            }
+            edl_data["events"].append(event)
+            print(f"  Event {event_num}: {clip_name} -> {vfx_id}  [{rec_start_tc} - {rec_end_tc}]")
+            timeline_pos += length
+
+    print(f"\nFound {event_num} clips in AAF timeline.")
+    return edl_data
+
+
 def export_final_vfx_edl(json_file_path: str, final_vfx_bin: str, edl_final_file_path: str):
     """Export an EDL for cutting in final vfx in AVID."""
     AVID_bin_data = read_csv(final_vfx_bin, delimiter='\t') # Read AVID bin file
@@ -721,6 +922,7 @@ def main():
     parser.add_argument('-t', '--google', action='store_true', help='Export TAB file to import into a Spreadsheet')
     parser.add_argument('-n', '--aaf', metavar='AAF', help='Export AAF with VFX ID clip notes, requires a source AAF')
     parser.add_argument('-f', '--final', metavar='BIN', help='Export EDL for cutting in final vfx in AVID, requires an AVID bin (TAB)')
+    parser.add_argument('-a', '--aaf_read', metavar='AAF', help='Import an AAF timeline, create project and export a new AAF with VFX ID clip notes')
 
     args = parser.parse_args()
 
@@ -798,6 +1000,38 @@ def main():
         edl_dir = project['config']['edl_dir']
         edl_stem = os.path.splitext(project['config']['edl_file'])[0]
         export_final_vfx_edl(PROJECT_FILE, args.final, os.path.join(edl_dir, edl_stem + '_vfx_final.edl'))
+    elif args.aaf_read:
+        if os.path.exists(PROJECT_FILE):
+            with open(PROJECT_FILE) as f:
+                old_config = json.load(f).get('config', DEFAULT_CONFIG)
+        else:
+            old_config = DEFAULT_CONFIG.copy()
+        film_id, fps_val = prompt_edl_options(old_config)
+        FilmID = film_id
+        fps = fps_val
+        aaf_file = args.aaf_read
+        aaf_dir = os.path.dirname(os.path.abspath(aaf_file))
+        aaf_stem = os.path.splitext(os.path.basename(aaf_file))[0]
+        aaf_data = aaf_to_json(aaf_file)
+        project = {
+            'config': {
+                'edl_file': os.path.basename(aaf_file),
+                'edl_dir': aaf_dir,
+                'FilmID': film_id,
+                'fps': fps_val,
+                'handles': old_config.get('handles', 0),
+                'markers': old_config.get('markers', DEFAULT_CONFIG['markers']),
+            },
+            'edl_metadata': aaf_data['edl_metadata'],
+            'events': aaf_data['events'],
+        }
+        save_project(project)
+        print("Project saved.")
+        user, color, position, clip_color = prompt_aaf_options(project['config'])
+        project['config']['markers'] = {'user': user, 'color': color, 'position': position, 'clip_color': clip_color}
+        save_project(project)
+        output_aaf = os.path.join(aaf_dir, aaf_stem + '_new.aaf')
+        json_to_aaf(PROJECT_FILE, aaf_file, output_aaf, user, color, position, clip_color)
 
 
 if __name__ == "__main__":

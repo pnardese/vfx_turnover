@@ -43,6 +43,22 @@ Import the EDL into the project:
 vfx-turnover -e timeline.edl
 ```
 
+### Alternative: Import from AAF
+
+If no EDL is available, you can import the VFX sequence directly from an Avid AAF export. This reads the timeline clips, extracts scene numbers from the Avid clip names, generates VFX IDs, and writes them as clip notes, timeline markers, and clip color into a new AAF — all in one step.
+
+Simplify the timeline in Avid before exporting (remove transitions, effects, commit groups), then export the sequence as AAF and run:
+
+```
+vfx-turnover -a sequence.aaf
+```
+
+The script prompts for Film ID, FPS, and then the same AAF options as `-n` (user, marker color, marker position, clip color). The project file is created and the output AAF is saved next to the source AAF with `_new` appended.
+
+> **Note:** VFX IDs are generated from the Avid bin clip names (e.g. `33-2-/01 A` → scene `033`). Source and record timecodes are extracted from the AAF reference chain and match the EDL output for the same sequence.
+
+---
+
 ### 2. Export Markers and Subcaps
 
 Export markers and subcaps and import them into Avid to help keep track of VFX shots.
@@ -150,6 +166,7 @@ vfx-turnover -f avid_bin.txt
 | Option | Description |
 |--------|-------------|
 | `-e timeline.edl` | Import an EDL and create/update the project file |
+| `-a sequence.aaf` | Import an AAF timeline, create project and export a new AAF with VFX ID clip notes, markers and clip color |
 | `-m` | Export a marker text file for Avid (interactive options) |
 | `-s` | Export a subcaps text file for Avid |
 | `-p` | Export an ALE for creating pulls in Avid bin |
