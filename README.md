@@ -55,6 +55,21 @@ vfx-turnover -a sequence.aaf
 
 The script prompts for Film ID, FPS, and then the same AAF options as `-n` (user, marker color, marker position, clip color). The project file is created and the output AAF is saved next to the source AAF with `_new` appended.
 
+Before exporting, the script scans the full timeline and checks for inconsistencies: if any clip already has both a clip note and a timeline marker but they carry different VFX IDs, all mismatches are reported and the script exits without writing any file:
+
+```
+Warning: 2 VFX ID mismatch(es) found — fix the source AAF before exporting:
+
+  [00:58:26:09]  33-2-/01 A
+    Clip note : GDN_033_100
+    Marker    : GDN_033_105
+  [00:59:01:04]  33-4-/01 A
+    Clip note : GDN_033_1
+    Marker    : GDN_033_130
+```
+
+Resolve the mismatches in Avid before re-running.
+
 > **Note:** VFX IDs are generated from the Avid bin clip names (e.g. `33-2-/01 A` → scene `033`). Source and record timecodes are extracted from the AAF reference chain and match the EDL output for the same sequence.
 
 ---
