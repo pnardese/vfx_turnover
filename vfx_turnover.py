@@ -1023,7 +1023,6 @@ def main():
     parser.add_argument('-p', '--pulls', action='store_true', help='Export ALE file for creating pulls in AVID bin')
     parser.add_argument('-c', '--edl_pulls', action='store_true', help='Export EDL for cutting in pulls in AVID')
     parser.add_argument('-t', '--google', action='store_true', help='Export TAB file to import into a Spreadsheet')
-    parser.add_argument('-n', '--aaf', metavar='AAF', help='Export AAF with VFX ID clip notes, requires a source AAF')
     parser.add_argument('-f', '--final', metavar='BIN', help='Export EDL for cutting in final vfx in AVID, requires an AVID bin (TAB)')
 
     args = parser.parse_args()
@@ -1089,14 +1088,6 @@ def main():
         edl_dir = project['config']['edl_dir']
         edl_stem = os.path.splitext(project['config']['edl_file'])[0]
         export_google_tab(PROJECT_FILE, os.path.join(edl_dir, edl_stem + '_TAB.txt'))
-    elif args.aaf:
-        project = load_project()
-        edl_dir = project['config']['edl_dir']
-        edl_stem = os.path.splitext(project['config']['edl_file'])[0]
-        user, color, position, clip_color = prompt_aaf_options(project['config'])
-        project['config']['markers'] = {'user': user, 'color': color, 'position': position, 'clip_color': clip_color}
-        save_project(project)
-        json_to_aaf(PROJECT_FILE, args.aaf, os.path.join(edl_dir, edl_stem + '_new.aaf'), user, color, position, clip_color)
     elif args.final:
         project = load_project()
         edl_dir = project['config']['edl_dir']
