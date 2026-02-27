@@ -760,6 +760,7 @@ def aaf_to_json(aaf_file: str) -> dict:
         base_tc = Timecode(fps, tc_start_str)
         event_num = 0
         timeline_pos = 0
+        inconsistencies = []  # collect (clip_name, rec_tc, clip_note_id, marker_id) mismatches
 
         # Collect existing markers from EventMobSlot for VFX ID reuse detection
         existing_markers = {}  # {position: vfx_id}
@@ -909,6 +910,10 @@ def aaf_to_json(aaf_file: str) -> dict:
                     marker_id = vid
                     break
 
+            # Collect inconsistency if clip note and marker both exist but disagree
+            if clip_note_id and marker_id and clip_note_id != marker_id:
+                inconsistencies.append((clip_name, str(base_tc + timeline_pos), clip_note_id, marker_id))
+
             # Generate VFX ID from subclip name (has scene number, same as *FROM CLIP NAME in EDL)
             # Always advance counter so new clips get the correct next ID even if some have existing IDs
             scene_match = re.search(r'\d+', clip_name)
@@ -953,6 +958,13 @@ def aaf_to_json(aaf_file: str) -> dict:
             timeline_pos += length
 
     print(f"\nFound {event_num} clips in AAF timeline.")
+
+    if inconsistencies:
+        print(f"\nWarning: {len(inconsistencies)} VFX ID mismatch(es) found — fix the source AAF before exporting:\n", file=sys.stderr)
+        for clip_name, tc, note_id, mark_id in inconsistencies:
+            print(f"  [{tc}]  {clip_name}\n    Clip note : {note_id}\n    Marker    : {mark_id}", file=sys.stderr)
+        sys.exit(1)
+
     return edl_data
 
 
