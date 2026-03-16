@@ -469,6 +469,170 @@ def export_google_tab(json_file_path: str, google_file_path: str):
         print(f"Error writing {google_file_path}: {e}")  # Print error message
 
 
+def compare_edls(old_events: list, new_events: list, fps_val: str, handles_val: int) -> list:
+    """Compare two EDL event lists and return annotated changelist.
+
+    Matching order: VFX ID first, then reel+source_start_TC fallback for no-ID events.
+
+    Each returned event has 'change_status' set to one of:
+      unchanged, new, removed, moved,
+      trimmed_ok, trimmed_pull,
+      moved_trimmed_ok, moved_trimmed_pull
+
+    Trimmed events also carry 'head_trimmed' / 'tail_trimmed' booleans and
+    frame-delta fields src_in_d, src_out_d, rec_in_d, rec_out_d plus the
+    previous TC values for reference.
+
+    Move detection: a clip is considered moved when the record-TC shift is not
+    fully explained by the source trim, i.e.:
+        moved = (rec_in_d != src_in_d) OR (rec_out_d != src_out_d)
+    """
+    old_by_id = {e['VFX ID']: e for e in old_events if e.get('VFX ID')}
+    old_by_reel_tc = {}
+    for e in old_events:
+        if e.get('reel') and e.get('source_start_TC'):
+            old_by_reel_tc[f"{e['reel']}|{e['source_start_TC']}"] = e
+
+    result = []
+    matched_old_vfx_ids = set()
+    matched_old_reel_tcs = set()
+
+    for e in new_events:
+        ev = dict(e)
+        vfx_id = e.get('VFX ID', '')
+        old = None
+
+        if vfx_id:
+            old = old_by_id.get(vfx_id)
+            if old:
+                matched_old_vfx_ids.add(vfx_id)
+
+        if old is None:
+            reel_tc_key = f"{e.get('reel', '')}|{e.get('source_start_TC', '')}"
+            old = old_by_reel_tc.get(reel_tc_key)
+            if old:
+                matched_old_reel_tcs.add(reel_tc_key)
+
+        if old is None:
+            ev['change_status'] = 'new'
+            ev['head_trimmed'] = False
+            ev['tail_trimmed'] = False
+        else:
+            new_src_in  = Timecode(fps_val, e['source_start_TC']).frames
+            new_src_out = Timecode(fps_val, e['source_end_TC']).frames
+            old_src_in  = Timecode(fps_val, old['source_start_TC']).frames
+            old_src_out = Timecode(fps_val, old['source_end_TC']).frames
+            new_rec_in  = Timecode(fps_val, e['record_start_TC']).frames
+            new_rec_out = Timecode(fps_val, e['record_end_TC']).frames
+            old_rec_in  = Timecode(fps_val, old['record_start_TC']).frames
+            old_rec_out = Timecode(fps_val, old['record_end_TC']).frames
+
+            src_in_d  = new_src_in  - old_src_in
+            src_out_d = new_src_out - old_src_out
+            rec_in_d  = new_rec_in  - old_rec_in
+            rec_out_d = new_rec_out - old_rec_out
+
+            src_changed  = src_in_d != 0 or src_out_d != 0
+            head_trimmed = src_in_d != 0
+            tail_trimmed = src_out_d != 0
+            moved        = (rec_in_d != src_in_d) or (rec_out_d != src_out_d)
+            within_handles = (new_src_in >= old_src_in - handles_val) and \
+                             (new_src_out <= old_src_out + handles_val)
+
+            if not src_changed and not moved:
+                status = 'unchanged'
+            elif not src_changed and moved:
+                status = 'moved'
+            elif src_changed and not moved:
+                status = 'trimmed_ok' if within_handles else 'trimmed_pull'
+            else:
+                status = 'moved_trimmed_ok' if within_handles else 'moved_trimmed_pull'
+
+            ev['change_status']       = status
+            ev['head_trimmed']        = head_trimmed
+            ev['tail_trimmed']        = tail_trimmed
+            ev['src_in_d']            = src_in_d
+            ev['src_out_d']           = src_out_d
+            ev['rec_in_d']            = rec_in_d
+            ev['rec_out_d']           = rec_out_d
+            ev['prev_source_start_TC'] = old['source_start_TC']
+            ev['prev_source_end_TC']   = old['source_end_TC']
+            ev['prev_record_start_TC'] = old['record_start_TC']
+            ev['prev_record_end_TC']   = old['record_end_TC']
+
+        result.append(ev)
+
+    # Append removed events (in old but not matched in new)
+    for e in old_events:
+        vfx_id      = e.get('VFX ID', '')
+        reel_tc_key = f"{e.get('reel', '')}|{e.get('source_start_TC', '')}"
+        is_matched  = (vfx_id and vfx_id in matched_old_vfx_ids) or \
+                      (reel_tc_key in matched_old_reel_tcs)
+        if not is_matched:
+            ev = dict(e)
+            ev['change_status'] = 'removed'
+            ev['head_trimmed']  = False
+            ev['tail_trimmed']  = False
+            result.append(ev)
+
+    return result
+
+
+def export_changelist_markers(events: list, fps_val: str, output_path: str,
+                              user: str = 'vfx', track: str = 'V1', color: str = 'green'):
+    """Write a changelist markers .txt file for Avid from annotated EDL events.
+
+    Marker timecode is placed at 1/3 of each event's record duration.
+    'unchanged' events are skipped. 'removed' events use their own record TCs.
+    """
+    TRIM_PART = {
+        (True,  True):  'HEAD & TAIL',
+        (True,  False): 'HEAD',
+        (False, True):  'TAIL',
+    }
+
+    if os.path.exists(output_path):
+        os.remove(output_path)
+    try:
+        with open(output_path, 'a') as out:
+            for e in events:
+                status = e.get('change_status', 'unchanged')
+                if status == 'unchanged':
+                    continue
+
+                rec_start  = Timecode(fps_val, e['record_start_TC'])
+                rec_end    = Timecode(fps_val, e['record_end_TC'])
+                duration_f = rec_end.frames - rec_start.frames
+                marker_tc  = str(rec_start + duration_f // 3)
+
+                vfx_id = e.get('VFX ID') or '[NO ID]'
+                head   = e.get('head_trimmed', False)
+                tail   = e.get('tail_trimmed', False)
+
+                if status == 'new':
+                    label = 'NEW - NEED TO PULL'
+                elif status == 'removed':
+                    label = 'REMOVED'
+                elif status == 'moved':
+                    label = 'MOVED'
+                elif status in ('trimmed_ok', 'trimmed_pull'):
+                    trim_part = TRIM_PART.get((head, tail), 'HEAD & TAIL')
+                    pull      = 'NEED TO PULL' if status == 'trimmed_pull' else 'NO PULL NEEDED'
+                    label     = f'TRIMMED {trim_part} - {pull}'
+                elif status in ('moved_trimmed_ok', 'moved_trimmed_pull'):
+                    trim_part = TRIM_PART.get((head, tail), 'HEAD & TAIL')
+                    pull      = 'NEED TO PULL' if status == 'moved_trimmed_pull' else 'NO PULL NEEDED'
+                    label     = f'MOVED TRIMMED {trim_part} - {pull}'
+                else:
+                    label = status.upper()
+
+                line = create_string('\t', user, marker_tc, track, color, f'{vfx_id} {label}', '1')
+                out.write(line + '\n')
+        print(f"Successfully exported changelist markers: {output_path}")
+    except Exception as ex:
+        print(f"Error writing {output_path}: {ex}")
+
+
 def _ensure_descriptive_metadata_def(f):
     """Register DescriptiveMetadata DataDef if missing.
 
@@ -705,6 +869,130 @@ def json_to_aaf(json_file_path: str, input_aaf_path: str, output_aaf_path: str,
     print(f'\nProcessed {clip_num} clips: {len(marker_data)} new markers, {len(kept_markers)} preserved → {output_aaf_path}')
 
 
+def check_aaf_consistency(aaf_file: str):
+    """Check AAF for clip note / marker VFX ID mismatches. Exit if any found."""
+    inconsistencies = []
+    with aaf2.open(aaf_file, 'r') as f:
+        main_mob = None
+        for mob in f.content.toplevel():
+            for slot in mob.slots:
+                if not hasattr(slot.segment, 'components'):
+                    continue
+                media_kind = getattr(slot, 'media_kind', None)
+                if media_kind and 'picture' in str(media_kind).lower():
+                    main_mob = mob
+                    break
+            if main_mob:
+                break
+
+        if main_mob is None:
+            print("Error: no video timeline found in AAF", file=sys.stderr)
+            sys.exit(1)
+
+        video_slot = None
+        for slot in main_mob.slots:
+            if not hasattr(slot.segment, 'components'):
+                continue
+            media_kind = getattr(slot, 'media_kind', None)
+            if media_kind and 'picture' in str(media_kind).lower():
+                video_slot = slot
+                break
+
+        fps_check = str(int(round(video_slot.edit_rate.numerator / video_slot.edit_rate.denominator)))
+        tc_start_str = '01:00:00:00'
+        for slot in main_mob.slots:
+            if type(slot.segment).__name__ == 'Timecode':
+                try:
+                    tc_start_str = str(Timecode(fps_check, frames=slot.segment['Start'].value + 1))
+                except Exception:
+                    pass
+                break
+        base_tc = Timecode(fps_check, tc_start_str)
+
+        existing_markers = {}
+        for slot in main_mob.slots:
+            if type(slot).__name__ == 'EventMobSlot':
+                for marker in slot.segment.components:
+                    attrs = marker.get('CommentMarkerAttributeList')
+                    if attrs:
+                        try:
+                            pos = marker['Position'].value
+                        except Exception:
+                            continue
+                        for tag in attrs:
+                            if tag.name == '_ATN_CRM_COM' and tag.value:
+                                existing_markers[pos] = tag.value
+                                break
+                break
+
+        timeline_pos = 0
+        for comp in video_slot.segment.components:
+            comp_type = type(comp).__name__
+            length = getattr(comp, 'length', 0) or 0
+
+            if comp_type == 'Filler':
+                timeline_pos += length
+                continue
+
+            target_comp = None
+            source_clip = None
+            if isinstance(comp, aaf2.components.SourceClip) and comp.mob:
+                target_comp = comp
+                source_clip = comp
+            elif comp_type == 'Selector':
+                target_comp = comp
+                sel = comp['Selected'].value
+                if isinstance(sel, aaf2.components.SourceClip) and sel.mob:
+                    source_clip = sel
+            elif comp_type == 'OperationGroup':
+                target_comp = comp
+                segments = comp.get('InputSegments')
+                if segments:
+                    for seg in segments:
+                        if isinstance(seg, aaf2.components.SourceClip) and seg.mob:
+                            source_clip = seg
+                            break
+                        if hasattr(seg, 'components'):
+                            for sc in seg.components:
+                                if isinstance(sc, aaf2.components.SourceClip) and sc.mob:
+                                    source_clip = sc
+                                    break
+                            if source_clip:
+                                break
+
+            if source_clip is None:
+                timeline_pos += length
+                continue
+
+            clip_name = source_clip.mob.name or ''
+
+            clip_note_id = None
+            if target_comp is not None:
+                attr_list = target_comp.get('ComponentAttributeList')
+                if attr_list:
+                    for attr in attr_list:
+                        if attr.name == '_COMMENT' and attr.value:
+                            clip_note_id = attr.value
+                            break
+
+            marker_id = None
+            for pos, vid in existing_markers.items():
+                if timeline_pos <= pos < timeline_pos + length:
+                    marker_id = vid
+                    break
+
+            if clip_note_id and marker_id and clip_note_id != marker_id:
+                inconsistencies.append((clip_name, str(base_tc + timeline_pos), clip_note_id, marker_id))
+
+            timeline_pos += length
+
+    if inconsistencies:
+        print(f"\nWarning: {len(inconsistencies)} VFX ID mismatch(es) found — fix the source AAF before exporting:\n", file=sys.stderr)
+        for clip_name, tc, note_id, mark_id in inconsistencies:
+            print(f"  [{tc}]  {clip_name}\n    Clip note : {note_id}\n    Marker    : {mark_id}", file=sys.stderr)
+        sys.exit(1)
+
+
 def aaf_to_json(aaf_file: str) -> dict:
     """Read an AAF timeline with pyaaf2, extract clips, and return event data like edl_to_json."""
 
@@ -760,7 +1048,6 @@ def aaf_to_json(aaf_file: str) -> dict:
         base_tc = Timecode(fps, tc_start_str)
         event_num = 0
         timeline_pos = 0
-        inconsistencies = []  # collect (clip_name, rec_tc, clip_note_id, marker_id) mismatches
 
         # Collect existing markers from EventMobSlot for VFX ID reuse detection
         existing_markers = {}  # {position: vfx_id}
@@ -910,10 +1197,6 @@ def aaf_to_json(aaf_file: str) -> dict:
                     marker_id = vid
                     break
 
-            # Collect inconsistency if clip note and marker both exist but disagree
-            if clip_note_id and marker_id and clip_note_id != marker_id:
-                inconsistencies.append((clip_name, str(base_tc + timeline_pos), clip_note_id, marker_id))
-
             # Generate VFX ID from subclip name (has scene number, same as *FROM CLIP NAME in EDL)
             # Always advance counter so new clips get the correct next ID even if some have existing IDs
             scene_match = re.search(r'\d+', clip_name)
@@ -958,13 +1241,6 @@ def aaf_to_json(aaf_file: str) -> dict:
             timeline_pos += length
 
     print(f"\nFound {event_num} clips in AAF timeline.")
-
-    if inconsistencies:
-        print(f"\nWarning: {len(inconsistencies)} VFX ID mismatch(es) found — fix the source AAF before exporting:\n", file=sys.stderr)
-        for clip_name, tc, note_id, mark_id in inconsistencies:
-            print(f"  [{tc}]  {clip_name}\n    Clip note : {note_id}\n    Marker    : {mark_id}", file=sys.stderr)
-        sys.exit(1)
-
     return edl_data
 
 
@@ -1024,6 +1300,7 @@ def main():
     parser.add_argument('-c', '--edl_pulls', action='store_true', help='Export EDL for cutting in pulls in AVID')
     parser.add_argument('-t', '--google', action='store_true', help='Export TAB file to import into a Spreadsheet')
     parser.add_argument('-f', '--final', metavar='BIN', help='Export EDL for cutting in final vfx in AVID, requires an AVID bin (TAB)')
+    parser.add_argument('--compare', metavar='NEW_EDL', help='Compare new EDL against loaded project and export changelist markers file')
 
     args = parser.parse_args()
 
@@ -1093,7 +1370,44 @@ def main():
         edl_dir = project['config']['edl_dir']
         edl_stem = os.path.splitext(project['config']['edl_file'])[0]
         export_final_vfx_edl(PROJECT_FILE, args.final, os.path.join(edl_dir, edl_stem + '_vfx_final.edl'))
+    elif args.compare:
+        project = load_project()
+        new_edl = args.compare
+        config = project['config']
+        fps_val = config['fps']
+        handles_val = config['handles']
+        FilmID = config['FilmID']
+        fps = fps_val
+        handles = handles_val
+        user, color, _ = prompt_markers_options(config)
+        track = config.get('markers', DEFAULT_CONFIG['markers']).get('track', 'V1')
+        old_events = project['events']
+        new_data = edl_to_json(new_edl)
+        events = compare_edls(old_events, new_data['events'], fps_val, handles_val)
+        counts = {}
+        for e in events:
+            s = e.get('change_status', 'unchanged')
+            counts[s] = counts.get(s, 0) + 1
+        print("\nChangelist summary:")
+        order = [
+            ('new',               'new'),
+            ('removed',           'removed'),
+            ('moved',             'moved'),
+            ('trimmed_ok',        'trimmed (no pull)'),
+            ('trimmed_pull',      'trimmed (need pull)'),
+            ('moved_trimmed_ok',  'moved+trimmed (no pull)'),
+            ('moved_trimmed_pull','moved+trimmed (need pull)'),
+            ('unchanged',         'unchanged'),
+        ]
+        for key, label in order:
+            if counts.get(key):
+                print(f"  {counts[key]:>3}  {label}")
+        new_dir  = os.path.dirname(os.path.abspath(new_edl))
+        new_stem = os.path.splitext(os.path.basename(new_edl))[0]
+        output_path = os.path.join(new_dir, new_stem + '_changelist_markers.txt')
+        export_changelist_markers(events, fps_val, output_path, user, track, color)
     elif args.aaf_read:
+        check_aaf_consistency(args.aaf_read)
         if os.path.exists(PROJECT_FILE):
             with open(PROJECT_FILE) as f:
                 old_config = json.load(f).get('config', DEFAULT_CONFIG)

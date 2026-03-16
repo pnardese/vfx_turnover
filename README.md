@@ -53,7 +53,7 @@ Simplify the timeline in Avid before exporting (remove transitions, effects, com
 vfx-turnover -a sequence.aaf
 ```
 
-The script prompts for Film ID, FPS, and then the same AAF options as `-n` (user, marker color, marker position, clip color). The project file is created and the output AAF is saved next to the source AAF with `_new` appended.
+The script prompts for Film ID, FPS, user, marker color, marker position, and clip color. The project file is created and the output AAF is saved next to the source AAF with `_new` appended.
 
 Before exporting, the script scans the full timeline and checks for inconsistencies: if any clip already has both a clip note and a timeline marker but they carry different VFX IDs, all mismatches are reported and the script exits without writing any file:
 
@@ -92,34 +92,13 @@ When exporting markers (`-m`), the script prompts for:
 | Marker color | `green`, `red`, `blue`, `cyan`, `magenta`, `yellow`, `black`, `white` | `green` |
 | Marker position | `start`, `middle` | `middle` |
 
-### 3. Export AAF with Clip Notes
-
-As an alternative to markers, VFX IDs can be embedded as clip notes directly on each shot in the sequence. Export the sequence as AAF from Avid, then run:
-
-```
-vfx-turnover -n sequence.aaf
-```
-
-The script automatically detects the video track from the AAF. It also writes timeline markers on the same track. The output AAF is saved next to the original EDL with `_new` appended to the filename (e.g. `VFX_48_new.aaf`).
-
-When running `-n`, the script prompts for:
-
-| Option | Choices | Default |
-|--------|---------|---------|
-| AVID user name | any string | `vfx` |
-| Marker color | `green`, `red`, `blue`, `cyan`, `magenta`, `yellow`, `black`, `white` | `green` |
-| Marker position | `start`, `middle` | `middle` |
-| Clip color | `none`, or any of 32 Avid clip colors | `none` |
-
-The clip color prompt displays a 4-column grid with color swatches. Colors are written as `_COLOR_R/G/B` tagged values in the AAF's `ComponentAttributeList`, matching the format Avid uses natively.
-
-### 4. Export Frames
+### 3. Export Frames
 
 Export markers from Avid as JPGs to use them to build a VFX shots database.
 
 ![Export settings for frame extraction at marker's position](imgs/02_export_frames.png)
 
-### 5. Export TAB Text File
+### 4. Export TAB Text File
 
 Export a TAB-delimited file with VFX IDs info, importable in any database or spreadsheet to build a VFX shot database.
 
@@ -144,7 +123,7 @@ The exported file contains one row per shot with the following columns:
 | `Pull Handles` | Handle frames configured for the project |
 | `Tape` | Source reel / tape name |
 
-### 6. Export ALE Pulls
+### 5. Export ALE Pulls
 
 Export ALE Pulls to create pulls (subclips named with VFX IDs from master clips). After selecting master clips in the bin, drag the ALE file onto the bin. Import settings: *Merge events with known sources and automatically create subclips*.
 
@@ -154,7 +133,7 @@ vfx-turnover -p
 
 ![Import settings](imgs/03_merge_events_ale.png)
 
-### 7. Export Pulls EDL
+### 6. Export Pulls EDL
 
 Export a Pulls EDL to create a timeline with pull subclips. Import the EDL into an Avid bin and relink to pull subclips using Names.
 
@@ -164,7 +143,7 @@ vfx-turnover -c
 
 ![Relink configuration](imgs/04_relink_edl_pulls_v02.png)
 
-### 8. VFX Cut-ins
+### 7. VFX Cut-ins
 
 When you receive incoming VFX (`.mov` files), import them into Avid, then export the bin in TAB format. Use the TAB file to generate an EDL for cutting the VFX into the timeline. Required bin columns: **Color**, **Name**, **Duration**, **Start**, **End**, **Tape**.
 
@@ -187,7 +166,6 @@ vfx-turnover -f avid_bin.txt
 | `-p` | Export an ALE for creating pulls in Avid bin |
 | `-c` | Export an EDL for cutting in pulls |
 | `-t` | Export a TAB-delimited text file for spreadsheet import |
-| `-n source.aaf` | Export an AAF with VFX ID clip notes (requires source AAF) |
 | `-f avid_bin.txt` | Export an EDL to cut in final VFX shots (requires Avid bin TAB) |
 
 All exported files are saved in the same folder as the original EDL.
