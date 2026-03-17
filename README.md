@@ -80,10 +80,9 @@ Export markers and subcaps and import them into Avid to help keep track of VFX s
 
 ```
 vfx-turnover -m
-vfx-turnover -s
 ```
 
-When exporting markers (`-m`), the script prompts for:
+Both a markers file and a subcaps file are exported in one step. The script prompts for:
 
 | Option | Choices | Default |
 |--------|---------|---------|
@@ -123,32 +122,28 @@ The exported file contains one row per shot with the following columns:
 | `Pull Handles` | Handle frames configured for the project |
 | `Tape` | Source reel / tape name |
 
-### 5. Export ALE Pulls
+### 5. Export ALE Pulls and Pulls EDL
 
-Export ALE Pulls to create pulls (subclips named with VFX IDs from master clips). After selecting master clips in the bin, drag the ALE file onto the bin. Import settings: *Merge events with known sources and automatically create subclips*.
+Export an ALE to create pull subclips and a Pulls EDL to cut them into a timeline — both exported in one step.
 
 ```
 vfx-turnover -p
 ```
 
+The script prompts for handle frames, then exports:
+- **ALE file** — drag onto the Avid bin after selecting master clips. Import settings: *Merge events with known sources and automatically create subclips*.
+- **Pulls EDL** — import into an Avid bin and relink to pull subclips using Names.
+
 ![Import settings](imgs/03_merge_events_ale.png)
-
-### 6. Export Pulls EDL
-
-Export a Pulls EDL to create a timeline with pull subclips. Import the EDL into an Avid bin and relink to pull subclips using Names.
-
-```
-vfx-turnover -c
-```
 
 ![Relink configuration](imgs/04_relink_edl_pulls_v02.png)
 
-### 7. Compare EDL Versions (Changelist)
+### 6. Compare EDL Versions (Changelist)
 
 When the editor delivers a revised EDL, compare it against the loaded project to generate a changelist markers file for Avid. Clips are matched by VFX ID (from `*LOC` markers) or by reel + source timecode as fallback.
 
 ```
-vfx-turnover --compare new_timeline.edl
+vfx-turnover -c new_timeline.edl
 ```
 
 The script prompts for handles, AVID user, track, and marker color, then exports a `_changelist_markers.txt` file next to the new EDL. Each changed clip gets a marker with a label describing what changed:
@@ -166,7 +161,7 @@ The script prompts for handles, AVID user, track, and marker color, then exports
 
 Frame deltas use `+` when the clip is extended and `-` when it is reduced. A trim is considered within handles (no new pull needed) when the source content added at each end stays within the configured handle frames (default: `10`).
 
-### 8. VFX Cut-ins
+### 7. VFX Cut-ins
 
 When you receive incoming VFX (`.mov` files), import them into Avid, then export the bin in TAB format. Use the TAB file to generate an EDL for cutting the VFX into the timeline. Required bin columns: **Color**, **Name**, **Duration**, **Start**, **End**, **Tape**.
 
@@ -184,13 +179,11 @@ vfx-turnover -f avid_bin.txt
 |--------|-------------|
 | `-e timeline.edl` | Import an EDL and create/update the project file |
 | `-a sequence.aaf` | Import an AAF timeline, create project and export a new AAF with VFX ID clip notes, markers and clip color |
-| `-m` | Export a marker text file for Avid (interactive options) |
-| `-s` | Export a subcaps text file for Avid |
-| `-p` | Export an ALE for creating pulls in Avid bin |
-| `-c` | Export an EDL for cutting in pulls |
+| `-m` | Export markers and subcaps for Avid (interactive options) |
+| `-p` | Export ALE and Pulls EDL for creating pulls in Avid bin |
 | `-t` | Export a TAB-delimited text file for spreadsheet import |
 | `-f avid_bin.txt` | Export an EDL to cut in final VFX shots (requires Avid bin TAB) |
-| `--compare new.edl` | Compare new EDL against loaded project and export a changelist markers file |
+| `-c new.edl` | Compare new EDL against loaded project and export a changelist markers file |
 
 All exported files are saved in the same folder as the original EDL.
 
@@ -200,7 +193,7 @@ All exported files are saved in the same folder as the original EDL.
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| Film ID | Project identifier used in VFX IDs | `FILM_ID` |
+| Project ID | Project identifier used in VFX IDs | `PID` |
 | FPS | Frame rate for timecode calculations | `24` |
 | Pull Handles | Extra frames added to pulls | `10` |
 

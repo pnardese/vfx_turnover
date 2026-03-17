@@ -1325,13 +1325,11 @@ def main():
 
     parser.add_argument('-e', '--edl', metavar='EDL', help='Import an EDL and create a project file')
     parser.add_argument('-a', '--aaf_read', metavar='AAF', help='Import an AAF timeline, create project and export a new AAF with VFX ID clip notes')
-    parser.add_argument('-m', '--markers', action='store_true', help='Export markers for AVID (interactive options)')
-    parser.add_argument('-s', '--subcaps', action='store_true', help='Export subcaps file for AVID')
-    parser.add_argument('-p', '--pulls', action='store_true', help='Export ALE file for creating pulls in AVID bin')
-    parser.add_argument('-c', '--edl_pulls', action='store_true', help='Export EDL for cutting in pulls in AVID')
+    parser.add_argument('-m', '--markers', action='store_true', help='Export markers and subcaps for AVID (interactive options)')
+    parser.add_argument('-p', '--pulls', action='store_true', help='Export ALE and EDL files for creating pulls in AVID bin')
     parser.add_argument('-t', '--tab', action='store_true', help='Export TAB file to import into a Spreadsheet')
     parser.add_argument('-f', '--final', metavar='BIN', help='Export EDL for cutting in final vfx in AVID, requires an AVID bin (TAB)')
-    parser.add_argument('--compare', metavar='NEW_EDL', help='Compare new EDL against loaded project and export changelist markers file')
+    parser.add_argument('-c', '--compare', metavar='NEW_EDL', help='Compare new EDL against loaded project and export changelist markers file')
 
     args = parser.parse_args()
 
@@ -1374,10 +1372,6 @@ def main():
         project['config']['markers'] = {'user': user, 'track': track, 'color': color, 'position': position}
         save_project(project)
         json_to_markers(PROJECT_FILE, os.path.join(edl_dir, edl_stem + '_markers.txt'), user, track, color, position)
-    elif args.subcaps:
-        project = load_project()
-        edl_dir = project['config']['edl_dir']
-        edl_stem = os.path.splitext(project['config']['edl_file'])[0]
         json_to_subcaps(PROJECT_FILE, os.path.join(edl_dir, edl_stem + '_subcaps.txt'))
     elif args.pulls:
         project = load_project()
@@ -1387,10 +1381,6 @@ def main():
         project['config']['handles'] = handles
         save_project(project)
         export_ale_pulls(PROJECT_FILE, os.path.join(edl_dir, edl_stem + '.ALE'))
-    elif args.edl_pulls:
-        project = load_project()
-        edl_dir = project['config']['edl_dir']
-        edl_stem = os.path.splitext(project['config']['edl_file'])[0]
         export_pulls_edl(PROJECT_FILE, os.path.join(edl_dir, edl_stem + '_pulls.edl'))
     elif args.tab:
         project = load_project()
