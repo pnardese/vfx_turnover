@@ -1048,6 +1048,9 @@ def check_aaf_consistency(aaf_file: str):
                 break
 
         timeline_pos = 0
+        total_clips  = 0
+        clips_with_id = 0
+        missing_id = []   # (clip_name, tc) for clips with no marker and no clip note
         for comp in video_slot.segment.components:
             comp_type = type(comp).__name__
             length = getattr(comp, 'length', 0) or 0
@@ -1086,6 +1089,7 @@ def check_aaf_consistency(aaf_file: str):
                 timeline_pos += length
                 continue
 
+            total_clips += 1
             clip_name = source_clip.mob.name or ''
 
             clip_note_id = None
@@ -1103,10 +1107,21 @@ def check_aaf_consistency(aaf_file: str):
                     marker_id = vid
                     break
 
+            if clip_note_id or marker_id:
+                clips_with_id += 1
+            else:
+                missing_id.append((clip_name, str(base_tc + timeline_pos)))
+
             if clip_note_id and marker_id and clip_note_id != marker_id:
                 inconsistencies.append((clip_name, str(base_tc + timeline_pos), clip_note_id, marker_id))
 
             timeline_pos += length
+
+    if clips_with_id > 0 and missing_id:
+        print(f"Error: AAF has VFX IDs on some clips but {len(missing_id)} clip(s) are missing both marker and clip note:", file=sys.stderr)
+        for clip_name, tc in missing_id:
+            print(f"  [{tc}]  {clip_name}", file=sys.stderr)
+        sys.exit(1)
 
     if inconsistencies:
         print(f"\nWarning: {len(inconsistencies)} VFX ID mismatch(es) found — fix the source AAF before exporting:\n", file=sys.stderr)

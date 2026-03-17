@@ -63,7 +63,7 @@ vfx-turnover -e timeline.edl
 
 ### Alternative: Import from AAF
 
-If no EDL is available, you can import the VFX sequence directly from an Avid AAF export. This reads the timeline clips, extracts scene numbers from the Avid clip names, generates VFX IDs, and writes them as clip notes, timeline markers, and clip color into a new AAF — all in one step.
+If no EDL is available, you can import the VFX sequence directly from an Avid AAF export. This reads the timeline clips, extracts scene numbers from the Avid clip names, and writes VFX IDs as clip notes, timeline markers, and clip color into a new AAF — all in one step.
 
 Simplify the timeline in Avid before exporting (remove transitions, effects, commit groups), then export the sequence as AAF and run:
 
@@ -71,12 +71,17 @@ Simplify the timeline in Avid before exporting (remove transitions, effects, com
 vfx-turnover -a sequence.aaf
 ```
 
-The project file is created using the settings from `-i`. The script then prompts for user, marker color, marker position, and clip color. The output AAF is saved next to the source AAF with `_new` appended.
+The project file is created using the settings from `-i`. The script warns if the AAF fps or resolution does not match the project config. It then prompts for user, marker color, marker position, and clip color. The output AAF is saved next to the source AAF with `_new` appended.
 
-Before exporting, the script scans the full timeline and checks for inconsistencies: if any clip already has both a clip note and a timeline marker but they carry different VFX IDs, all mismatches are reported and the script exits without writing any file:
+**VFX ID handling** follows the same rules as EDL import:
+
+- **No markers and no clip notes** → VFX IDs are auto-generated from scene numbers (`ProjectID_Scene_num`, 4-digit counter)
+- **Some clips missing both marker and clip note** → script stops with an error listing the affected clips
+- **Clip has marker only, or clip note only** → that ID is used; the other source is ignored
+- **Clip has both marker and clip note with different values** → script stops with a mismatch error:
 
 ```
-Warning: 2 VFX ID mismatch(es) found — fix the source AAF before exporting:
+Error: 2 VFX ID mismatch(es) found — fix the source AAF before exporting:
 
   [00:58:26:09]  33-2-/01 A
     Clip note : GDN_033_100
@@ -87,8 +92,6 @@ Warning: 2 VFX ID mismatch(es) found — fix the source AAF before exporting:
 ```
 
 Resolve the mismatches in Avid before re-running.
-
-> **Note:** VFX IDs are generated from the Avid bin clip names (e.g. `33-2-/01 A` → scene `033`). Source and record timecodes are extracted from the AAF reference chain and match the EDL output for the same sequence.
 
 ---
 
