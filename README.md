@@ -76,7 +76,7 @@ The project file is created using the settings from `-i`. The script warns if th
 **VFX ID handling** follows the same rules as EDL import:
 
 - **No markers and no clip notes** → VFX IDs are auto-generated from scene numbers (`ProjectID_Scene_num`, 4-digit counter)
-- **Some clips missing both marker and clip note** → script stops with an error listing the affected clips
+- **Some clips missing both marker and clip note** → script stops with an error listing the affected timecodes; resolve in Avid before re-running
 - **Clip has marker only, or clip note only** → that ID is used; the other source is ignored
 - **Clip has both marker and clip note with different values** → script stops with a mismatch error:
 
