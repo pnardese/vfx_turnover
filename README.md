@@ -32,7 +32,7 @@ pipx reinstall vfx-turnover
 
 Create an EDL (File_129 or CMX3600) from the Avid video track containing only shots planned for VFX, simplify timeline by removing transitions, effects and committing groups. In List Options in Avid, check: **Clip Names**, **Source File Name**, and **Markers**.
 
-VFX IDs are generated automatically based on scene numbers: `FILM_ID_Scene_num`, where `num` is a progressive number like 010, 020, 030, etc.
+VFX IDs are generated automatically based on scene numbers: `ProjectID_Scene_num`, where `num` is a 4-digit progressive number like `0010`, `0020`, `0030`, etc. Auto-generation only happens when the EDL has **no markers at all**. If the EDL has markers but some events are missing a VFX ID, the script stops with an error listing the affected events.
 
 Existing markers on the timeline are imported as existing VFX IDs (found in the EDL as `*LOC` lines). If you add VFX shots in Avid, add markers with their new VFX IDs before re-importing.
 
@@ -143,7 +143,30 @@ vfx-turnover -c
 
 ![Relink configuration](imgs/04_relink_edl_pulls_v02.png)
 
-### 7. VFX Cut-ins
+### 7. Compare EDL Versions (Changelist)
+
+When the editor delivers a revised EDL, compare it against the loaded project to generate a changelist markers file for Avid. Clips are matched by VFX ID (from `*LOC` markers) or by reel + source timecode as fallback.
+
+```
+vfx-turnover --compare new_timeline.edl
+```
+
+The script prompts for handles, AVID user, track, and marker color, then exports a `_changelist_markers.txt` file next to the new EDL. Each changed clip gets a marker with a label describing what changed:
+
+| Status | Marker label |
+|--------|-------------|
+| New clip | `VFX_ID NEW - NEED TO PULL` |
+| Removed clip | `VFX_ID REMOVED` |
+| Moved (record TC shift) | `VFX_ID MOVED` |
+| Tail trimmed, within handles | `VFX_ID TRIMMED TAIL +7f - NO PULL NEEDED` |
+| Tail trimmed, beyond handles | `VFX_ID TRIMMED TAIL +15f - NEED TO PULL` |
+| Head trimmed | `VFX_ID TRIMMED HEAD -5f - NO PULL NEEDED` |
+| Both ends trimmed | `VFX_ID TRIMMED HEAD & TAIL H:-3f T:+8f - NO PULL NEEDED` |
+| Moved and trimmed | `VFX_ID MOVED TRIMMED TAIL +4f - NEED TO PULL` |
+
+Frame deltas use `+` when the clip is extended and `-` when it is reduced. A trim is considered within handles (no new pull needed) when the source content added at each end stays within the configured handle frames (default: `10`).
+
+### 8. VFX Cut-ins
 
 When you receive incoming VFX (`.mov` files), import them into Avid, then export the bin in TAB format. Use the TAB file to generate an EDL for cutting the VFX into the timeline. Required bin columns: **Color**, **Name**, **Duration**, **Start**, **End**, **Tape**.
 
@@ -167,6 +190,7 @@ vfx-turnover -f avid_bin.txt
 | `-c` | Export an EDL for cutting in pulls |
 | `-t` | Export a TAB-delimited text file for spreadsheet import |
 | `-f avid_bin.txt` | Export an EDL to cut in final VFX shots (requires Avid bin TAB) |
+| `--compare new.edl` | Compare new EDL against loaded project and export a changelist markers file |
 
 All exported files are saved in the same folder as the original EDL.
 

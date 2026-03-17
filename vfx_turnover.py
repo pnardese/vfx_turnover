@@ -23,9 +23,9 @@ PROJECT_DIR = os.path.join(os.path.expanduser('~'), '.config', 'vfx_turnover')
 PROJECT_FILE = os.path.join(PROJECT_DIR, 'vfx_project.json')
 
 DEFAULT_CONFIG = {
-    'FilmID': 'ABC',
+    'ProjectID': 'PID',
     'fps': '24',
-    'handles': 0,
+    'handles': 10,
     'markers': {
         'user': 'vfx',
         'track': 'V1',
@@ -37,14 +37,14 @@ DEFAULT_CONFIG = {
 
 def load_project():
     """Load project file, set globals, return data dict."""
-    global FilmID, fps, handles
+    global ProjectID, fps, handles
     if not os.path.exists(PROJECT_FILE):
         print(f"Error: No project file found. Run -e first to import an EDL.", file=sys.stderr)
         sys.exit(1)
     with open(PROJECT_FILE) as f:
         project = json.load(f)
     cfg = project['config']
-    FilmID = cfg['FilmID']
+    ProjectID = cfg['ProjectID']
     fps = cfg['fps']
     handles = cfg['handles']
     print(f"EDL: {cfg['edl_file']}")
@@ -90,73 +90,83 @@ def edl_to_json(edl_file: str):
         },
         "events": [],  # List to hold parsed event lines
     }
-    TITLE = ""
-    FCM = ""
-    last_scene = 0
-
     try:
         with open(edl_file, 'r') as f:
             for line in f:
-                line = line.strip() # Strip leading and trailing whitespace
-                if not line: # Skip empty lines
+                line = line.strip()
+                if not line:
                     continue
                 elif line.startswith("TITLE:"):
-                    edl_data["edl_metadata"]["edl_title"] = line.strip("TITLE:").strip() # Strip TITLE: and spaces from line
+                    edl_data["edl_metadata"]["edl_title"] = line.strip("TITLE:").strip()
                 elif line.startswith("FCM:"):
-                    edl_data["edl_metadata"]["edl_fcm"] = line.strip("FCM:").strip() # Strip FCM: and spaces from line
-                elif re.match(r'^\d+\s+\w+\s+\w+\s+\w+\s+(\d{2}:\d{2}:\d{2}:\d{2})+\s+(\d{2}:\d{2}:\d{2}:\d{2})+\s+(\d{2}:\d{2}:\d{2}:\d{2})+\s+(\d{2}:\d{2}:\d{2}:\d{2})$',line):
-                     parsed_line = parse_edl_line(line)
-                     if parsed_line:
+                    edl_data["edl_metadata"]["edl_fcm"] = line.strip("FCM:").strip()
+                elif re.match(r'^\d+\s+\w+\s+\w+\s+\w+\s+(\d{2}:\d{2}:\d{2}:\d{2})+\s+(\d{2}:\d{2}:\d{2}:\d{2})+\s+(\d{2}:\d{2}:\d{2}:\d{2})+\s+(\d{2}:\d{2}:\d{2}:\d{2})$', line):
+                    parsed_line = parse_edl_line(line)
+                    if parsed_line:
                         edl_data["events"].append(parsed_line)
                         last_event = edl_data["events"][-1]
-                elif line.startswith("*FROM") or line.startswith("* FROM"):  # Handle comment lines FROM (both formats)
+                elif line.startswith("*FROM") or line.startswith("* FROM"):
                     from_index = line.find("FROM")
-                    last_event["FROM"] = line[from_index + 4:].strip() # Extract text after FROM
-                elif line.startswith("*LOC:") or line.startswith("* LOC:"):  # Handle comment lines LOC (both formats)
+                    last_event["FROM"] = line[from_index + 4:].strip()
+                elif line.startswith("*LOC:") or line.startswith("* LOC:"):
                     loc_index = line.find("LOC:")
                     loc_value = line[loc_index + 4:].strip()
-                    last_event["LOC"] = loc_value # Extract text after LOC:
-                    last_event["VFX ID"] = loc_value.split()[-1] # Copy marker comment in VFX ID if present
-                elif line.startswith("*SOURCE") or line.startswith("* SOURCE"):  # Handle comment lines SOURCE (both formats)
+                    last_event["LOC"] = loc_value
+                    last_event["VFX ID"] = loc_value.split()[-1]
+                elif line.startswith("*SOURCE") or line.startswith("* SOURCE"):
                     source_index = line.find("SOURCE")
-                    source_value = line[source_index + 6:].strip() # Extract text after SOURCE
-                    # Strip "FILE:" prefix if present (CMX 3600 format)
+                    source_value = line[source_index + 6:].strip()
                     if source_value.upper().startswith("FILE:"):
                         source_value = source_value[5:].strip()
                     last_event["SOURCE"] = source_value
-                    # For CMX 3600: if SOURCE has full filename and reel is truncated, use SOURCE as reel
                     if source_value and len(source_value) > len(last_event["reel"]):
                         last_event["reel"] = source_value
-                    if not last_event["LOC"]: # First edl with no markers, create VFX ID
-                        scene_clip = last_event["FROM"].strip("*FROM CLIP NAME:").strip() # Strip *FROM CLIP NAME: and spaces from line
-                        scene_clip = re.search(r'\d+', scene_clip).group().rjust(3, "0") # Select only scene number an pad to three zeros
-                        if scene_clip == last_scene: # Check to see if we still are in the same scene
-                            VFX_counter += 10 # Add 10 to VFX counter
-                        else:
-                            VFX_counter = 10 # Reset VFX counter for new scene
-                        last_event["VFX ID"] = create_string("_", FilmID, scene_clip, str(VFX_counter).rjust(3, "0")) # Create VFX ID and write in json file
-                        # last_event["VFX ID"] = FilmID + "_" + scene_clip + "_" + str(VFX_counter).rjust(3, "0") # Create VFX ID and write in json file
-                        last_scene = scene_clip
                 else:
-                    print(f"Skipping unparsable line: {line}")  # Print error message
+                    print(f"Skipping unparsable line: {line}")
 
     except FileNotFoundError:
-        print(f"Error: EDL file not found: {edl_file}") # Print error message
+        print(f"Error: EDL file not found: {edl_file}")
         sys.exit(1)
+
+    # Post-parse: assign VFX IDs
+    has_any_loc = any(e.get('LOC') for e in edl_data['events'])
+    if not has_any_loc:
+        # No LOC markers at all — auto-generate VFX IDs for every event
+        last_scene = 0
+        VFX_counter = 10
+        for event in edl_data['events']:
+            scene_clip_raw = event["FROM"].strip("*FROM CLIP NAME:").strip()
+            m = re.search(r'\d+', scene_clip_raw)
+            scene_clip = m.group().rjust(3, "0") if m else "000"
+            if scene_clip == last_scene:
+                VFX_counter += 10
+            else:
+                VFX_counter = 10
+            event["VFX ID"] = create_string("_", ProjectID, scene_clip, str(VFX_counter).rjust(4, "0"))
+            last_scene = scene_clip
+    else:
+        # EDL has LOC markers — stop if any event is missing one
+        missing = [e for e in edl_data['events'] if not e.get('LOC')]
+        if missing:
+            print(f"Error: EDL has markers but {len(missing)} event(s) are missing a VFX ID:", file=sys.stderr)
+            for e in missing:
+                print(f"  Event {e['event_number']} ({e.get('reel', '')})", file=sys.stderr)
+            sys.exit(1)
 
     return edl_data
 
 
 def prompt_edl_options(config):
-    """Prompt for FilmID and fps when importing EDL."""
-    film_id = input(f"\nFilm ID [default: {config['FilmID']}]: ").strip() or config['FilmID']
+    """Prompt for ProjectID and fps when importing EDL."""
+    project_id = input(f"\nProject ID [default: {config['ProjectID']}]: ").strip() or config['ProjectID']
     fps_val = input(f"FPS [default: {config['fps']}]: ").strip() or config['fps']
-    return film_id, fps_val
+    return project_id, fps_val
 
 def prompt_ale_options(config):
     """Prompt for handles when exporting ALE."""
-    raw = input(f"\nHandles in frames [default: {config['handles']}]: ").strip()
-    return int(raw) if raw else config['handles']
+    default = config.get('handles') or DEFAULT_CONFIG['handles']
+    raw = input(f"\nHandles in frames [default: {default}]: ").strip()
+    return int(raw) if raw else default
 
 
 MARKER_TRACKS = ['TC'] + [f'V{i}' for i in range(1, 9)]
@@ -402,7 +412,7 @@ def export_pulls_edl(json_file_path: str, edl_pulls_file_path: str):
     if os.path.exists(edl_pulls_file_path): os.remove(edl_pulls_file_path) # Remove file if it exists
     try:
         with open(edl_pulls_file_path, 'a') as output_file: # Open EDL file
-            heading = 'TITLE: ' + os.path.splitext(edl_pulls_file_path)[0]+ '\n'\
+            heading = 'TITLE: ' + os.path.splitext(os.path.basename(edl_pulls_file_path))[0]+ '\n'\
             'FCM: NON-DROP FRAME\n' # Define EDL heading
             output_file.write(heading) # Write heading to EDL file
             for i in range(len(json_file['events'])): # Loop through JSON file
@@ -487,7 +497,7 @@ def compare_edls(old_events: list, new_events: list, fps_val: str, handles_val: 
     fully explained by the source trim, i.e.:
         moved = (rec_in_d != src_in_d) OR (rec_out_d != src_out_d)
     """
-    old_by_id = {e['VFX ID']: e for e in old_events if e.get('VFX ID')}
+    old_by_id = {e['VFX ID']: e for e in old_events if e.get('VFX ID') and e.get('LOC')}
     old_by_reel_tc = {}
     for e in old_events:
         if e.get('reel') and e.get('source_start_TC'):
@@ -499,7 +509,10 @@ def compare_edls(old_events: list, new_events: list, fps_val: str, handles_val: 
 
     for e in new_events:
         ev = dict(e)
-        vfx_id = e.get('VFX ID', '')
+        # Only use VFX ID for matching if it came from a real LOC marker,
+        # not auto-generated — auto-generated IDs shift when clips are
+        # inserted/removed, causing false matches.
+        vfx_id = e.get('VFX ID', '') if e.get('LOC') else ''
         old = None
 
         if vfx_id:
@@ -605,9 +618,25 @@ def export_changelist_markers(events: list, fps_val: str, output_path: str,
                 duration_f = rec_end.frames - rec_start.frames
                 marker_tc  = str(rec_start + duration_f // 3)
 
-                vfx_id = e.get('VFX ID') or '[NO ID]'
-                head   = e.get('head_trimmed', False)
-                tail   = e.get('tail_trimmed', False)
+                vfx_id  = e.get('VFX ID') or '[NO ID]'
+                head    = e.get('head_trimmed', False)
+                tail    = e.get('tail_trimmed', False)
+
+                def _fmt_delta(n):
+                    return f'+{n}f' if n >= 0 else f'{n}f'
+
+                def _trim_delta(ev):
+                    src_in_d  = ev.get('src_in_d', 0)
+                    src_out_d = ev.get('src_out_d', 0)
+                    h = ev.get('head_trimmed', False)
+                    t = ev.get('tail_trimmed', False)
+                    if h and t:
+                        return f'H:{_fmt_delta(-src_in_d)} T:{_fmt_delta(src_out_d)}'
+                    elif h:
+                        return _fmt_delta(-src_in_d)
+                    elif t:
+                        return _fmt_delta(src_out_d)
+                    return ''
 
                 if status == 'new':
                     label = 'NEW - NEED TO PULL'
@@ -618,11 +647,13 @@ def export_changelist_markers(events: list, fps_val: str, output_path: str,
                 elif status in ('trimmed_ok', 'trimmed_pull'):
                     trim_part = TRIM_PART.get((head, tail), 'HEAD & TAIL')
                     pull      = 'NEED TO PULL' if status == 'trimmed_pull' else 'NO PULL NEEDED'
-                    label     = f'TRIMMED {trim_part} - {pull}'
+                    delta     = _trim_delta(e)
+                    label     = f'TRIMMED {trim_part} {delta} - {pull}' if delta else f'TRIMMED {trim_part} - {pull}'
                 elif status in ('moved_trimmed_ok', 'moved_trimmed_pull'):
                     trim_part = TRIM_PART.get((head, tail), 'HEAD & TAIL')
                     pull      = 'NEED TO PULL' if status == 'moved_trimmed_pull' else 'NO PULL NEEDED'
-                    label     = f'MOVED TRIMMED {trim_part} - {pull}'
+                    delta     = _trim_delta(e)
+                    label     = f'MOVED TRIMMED {trim_part} {delta} - {pull}' if delta else f'MOVED TRIMMED {trim_part} - {pull}'
                 else:
                     label = status.upper()
 
@@ -1209,7 +1240,7 @@ def aaf_to_json(aaf_file: str) -> dict:
             last_scene = scene_clip
 
             event_num += 1
-            generated_id = create_string('_', FilmID, scene_clip, str(VFX_counter).rjust(3, '0'))
+            generated_id = create_string('_', ProjectID, scene_clip, str(VFX_counter).rjust(4, '0'))
             # Use existing VFX ID if found (clip note takes priority over marker); otherwise generated
             vfx_id = clip_note_id or marker_id or generated_id
 
@@ -1255,7 +1286,7 @@ def export_final_vfx_edl(json_file_path: str, final_vfx_bin: str, edl_final_file
     if os.path.exists(edl_final_file_path): os.remove(edl_final_file_path)  # Remove file if it exists
     try:
         with open(edl_final_file_path, 'a') as output_file:   # Open EDL file
-            heading = 'TITLE: ' + os.path.splitext(edl_final_file_path)[0]+ '\n'\
+            heading = 'TITLE: ' + os.path.splitext(os.path.basename(edl_final_file_path))[0]+ '\n'\
             'FCM: NON-DROP FRAME\n'    # Define EDL heading
             output_file.write(heading)  # Write heading to EDL file
             for i in range(len(AVID_bin_data['Name'])):  # Loop through AVID bin file
@@ -1288,7 +1319,7 @@ def export_final_vfx_edl(json_file_path: str, final_vfx_bin: str, edl_final_file
 
 def main():
 
-    global FilmID, fps, handles
+    global ProjectID, fps, handles
 
     parser = argparse.ArgumentParser(description='Import EDL, create project and export various stuff for AVID')
 
@@ -1298,7 +1329,7 @@ def main():
     parser.add_argument('-s', '--subcaps', action='store_true', help='Export subcaps file for AVID')
     parser.add_argument('-p', '--pulls', action='store_true', help='Export ALE file for creating pulls in AVID bin')
     parser.add_argument('-c', '--edl_pulls', action='store_true', help='Export EDL for cutting in pulls in AVID')
-    parser.add_argument('-t', '--google', action='store_true', help='Export TAB file to import into a Spreadsheet')
+    parser.add_argument('-t', '--tab', action='store_true', help='Export TAB file to import into a Spreadsheet')
     parser.add_argument('-f', '--final', metavar='BIN', help='Export EDL for cutting in final vfx in AVID, requires an AVID bin (TAB)')
     parser.add_argument('--compare', metavar='NEW_EDL', help='Compare new EDL against loaded project and export changelist markers file')
 
@@ -1315,8 +1346,8 @@ def main():
                 old_config = json.load(f).get('config', DEFAULT_CONFIG)
         else:
             old_config = DEFAULT_CONFIG.copy()
-        film_id, fps_val = prompt_edl_options(old_config)
-        FilmID = film_id
+        project_id, fps_val = prompt_edl_options(old_config)
+        ProjectID = project_id
         fps = fps_val
         edl_data = edl_to_json(args.edl)
         edl_dir = os.path.dirname(os.path.abspath(args.edl))
@@ -1324,9 +1355,9 @@ def main():
             'config': {
                 'edl_file': os.path.basename(args.edl),
                 'edl_dir': edl_dir,
-                'FilmID': film_id,
+                'ProjectID': project_id,
                 'fps': fps_val,
-                'handles': old_config.get('handles', 0),
+                'handles': old_config.get('handles', DEFAULT_CONFIG['handles']),
                 'markers': old_config.get('markers', DEFAULT_CONFIG['markers']),
             },
             'edl_metadata': edl_data['edl_metadata'],
@@ -1338,7 +1369,8 @@ def main():
         project = load_project()
         edl_dir = project['config']['edl_dir']
         edl_stem = os.path.splitext(project['config']['edl_file'])[0]
-        user, track, color, position = prompt_markers_options(project['config'])
+        user, color, position = prompt_markers_options(project['config'])
+        track = project['config'].get('markers', DEFAULT_CONFIG['markers']).get('track', 'V1')
         project['config']['markers'] = {'user': user, 'track': track, 'color': color, 'position': position}
         save_project(project)
         json_to_markers(PROJECT_FILE, os.path.join(edl_dir, edl_stem + '_markers.txt'), user, track, color, position)
@@ -1360,7 +1392,7 @@ def main():
         edl_dir = project['config']['edl_dir']
         edl_stem = os.path.splitext(project['config']['edl_file'])[0]
         export_pulls_edl(PROJECT_FILE, os.path.join(edl_dir, edl_stem + '_pulls.edl'))
-    elif args.google:
+    elif args.tab:
         project = load_project()
         edl_dir = project['config']['edl_dir']
         edl_stem = os.path.splitext(project['config']['edl_file'])[0]
@@ -1375,12 +1407,18 @@ def main():
         new_edl = args.compare
         config = project['config']
         fps_val = config['fps']
-        handles_val = config['handles']
-        FilmID = config['FilmID']
+        ProjectID = config['ProjectID']
         fps = fps_val
+        m = config.get('markers', DEFAULT_CONFIG['markers'])
+        raw = input(f"\nHandles in frames [default: {DEFAULT_CONFIG['handles']}]: ").strip()
+        handles_val = int(raw) if raw else DEFAULT_CONFIG['handles']
         handles = handles_val
-        user, color, _ = prompt_markers_options(config)
-        track = config.get('markers', DEFAULT_CONFIG['markers']).get('track', 'V1')
+        user  = input(f"AVID user name [default: {m['user']}]: ").strip() or m['user']
+        track = prompt_choice("Marker track:", MARKER_TRACKS, m.get('track', 'V1'))
+        color = prompt_choice("Marker color:", MARKER_COLORS, m['color'])
+        print()
+        project['config']['markers'] = {**m, 'user': user, 'track': track, 'color': color}
+        save_project(project)
         old_events = project['events']
         new_data = edl_to_json(new_edl)
         events = compare_edls(old_events, new_data['events'], fps_val, handles_val)
@@ -1413,8 +1451,8 @@ def main():
                 old_config = json.load(f).get('config', DEFAULT_CONFIG)
         else:
             old_config = DEFAULT_CONFIG.copy()
-        film_id, fps_val = prompt_edl_options(old_config)
-        FilmID = film_id
+        project_id, fps_val = prompt_edl_options(old_config)
+        ProjectID = project_id
         fps = fps_val
         aaf_file = args.aaf_read
         aaf_dir = os.path.dirname(os.path.abspath(aaf_file))
@@ -1424,9 +1462,9 @@ def main():
             'config': {
                 'edl_file': os.path.basename(aaf_file),
                 'edl_dir': aaf_dir,
-                'FilmID': film_id,
+                'ProjectID': project_id,
                 'fps': fps_val,
-                'handles': old_config.get('handles', 0),
+                'handles': old_config.get('handles', DEFAULT_CONFIG['handles']),
                 'markers': old_config.get('markers', DEFAULT_CONFIG['markers']),
             },
             'edl_metadata': aaf_data['edl_metadata'],
