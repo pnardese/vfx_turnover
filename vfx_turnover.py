@@ -22,9 +22,12 @@ def create_string(separator: str, *args: str) -> str:
 PROJECT_DIR = os.path.join(os.path.expanduser('~'), '.config', 'vfx_turnover')
 PROJECT_FILE = os.path.join(PROJECT_DIR, 'vfx_project.json')
 
+FPS_CHOICES = ['23.976', '24', '25', '29.97', '30', '59.94', '60']
+
 DEFAULT_CONFIG = {
     'ProjectID': 'PID',
     'fps': '24',
+    'resolution': '1080',
     'handles': 10,
     'markers': {
         'user': 'vfx',
@@ -156,17 +159,14 @@ def edl_to_json(edl_file: str):
     return edl_data
 
 
-def prompt_edl_options(config):
-    """Prompt for ProjectID and fps when importing EDL."""
-    project_id = input(f"\nProject ID [default: {config['ProjectID']}]: ").strip() or config['ProjectID']
-    fps_val = input(f"FPS [default: {config['fps']}]: ").strip() or config['fps']
-    return project_id, fps_val
-
-def prompt_ale_options(config):
-    """Prompt for handles when exporting ALE."""
-    default = config.get('handles') or DEFAULT_CONFIG['handles']
-    raw = input(f"\nHandles in frames [default: {default}]: ").strip()
-    return int(raw) if raw else default
+def prompt_init_options(config):
+    """Prompt for project initialization settings."""
+    project_id  = input(f"\nProject ID [default: {config.get('ProjectID', DEFAULT_CONFIG['ProjectID'])}]: ").strip() or config.get('ProjectID', DEFAULT_CONFIG['ProjectID'])
+    fps_val     = prompt_choice("FPS:", FPS_CHOICES, config.get('fps', DEFAULT_CONFIG['fps']))
+    resolution  = input(f"Resolution [default: {config.get('resolution', DEFAULT_CONFIG['resolution'])}]: ").strip() or config.get('resolution', DEFAULT_CONFIG['resolution'])
+    raw         = input(f"Handles in frames [default: {config.get('handles', DEFAULT_CONFIG['handles'])}]: ").strip()
+    handles_val = int(raw) if raw else config.get('handles', DEFAULT_CONFIG['handles'])
+    return project_id, fps_val, resolution, handles_val
 
 
 MARKER_TRACKS = ['TC'] + [f'V{i}' for i in range(1, 9)]
@@ -338,7 +338,7 @@ def json_to_markers(json_file_path: str, markers_file_path: str, user: str = 'vf
                 # markers_file_line = user + '\t' + json_file['events'][i]['record_start_TC'] + '\t' + track_number + '\t' + marker_color + '\t' + \
                 # json_file['events'][i]['VFX ID'] + '\t' + '1' + '\n' # Define markers file line
                 output_file.write(markers_file_line + '\n') # Write line to markers file
-        print(f"Succesfully exported markers file: {markers_file_path}")    # Print success message
+        print(f"  Markers:  {os.path.basename(markers_file_path)}")
     except Exception as e:
         print(f"Error writing {markers_file_path}: {e}")    # Print error message
 
@@ -362,7 +362,7 @@ def json_to_subcaps(json_file_path: str, sub_file_path: str):
                 output_file.write(sub_file_line + '\n') # Write line to subcaps file
             sub_file_line = '<end subtitles>\n' # Define end of subcaps file
             output_file.write(sub_file_line) # Write line to subcaps file
-        print(f"Succesfully exported subcaps file: {sub_file_path}")    # Print success message
+        print(f"  Subcaps:  {os.path.basename(sub_file_path)}")
     except Exception as e:
         print(f"Error writing {sub_file_path}: {e}")    # Print error message
 
@@ -399,7 +399,7 @@ Data\n\
                 # sub_file_line = json_file['events'][i]['VFX ID'] + '\t' + 'V' + '\t' + str(new_source_start_TC) + '\t' + str(new_source_end_TC) + \
                 # '\t' + json_file['events'][i]['reel'] + '\n' # Define ALE file line
                 output_file.write(sub_file_line + '\n') # Write line to ALE file
-            print(f"Succesfully exported ALE file: {ale_pulls_file_path}")  # Print success message
+            print(f"  ALE:       {os.path.basename(ale_pulls_file_path)}")
     except Exception as e:  # Catch exception
         print(f"Error writing {ale_pulls_file_path}: {e}")      # Print error message
 
@@ -432,7 +432,7 @@ def export_pulls_edl(json_file_path: str, edl_pulls_file_path: str):
                 # json_file['events'][i]['transition'] + ' ' + json_file['events'][i]['source_start_TC'] + ' ' + json_file['events'][i]['source_end_TC'] + ' ' + \
                 # json_file['events'][i]['record_start_TC'] + ' ' + json_file['events'][i]['record_end_TC'] # Define EDL file line
                 output_file.write(edl_pulls_file_line + '\n') # Write line to EDL file
-            print(f"Succesfully exported EDL file: {edl_pulls_file_path}")  # Print success message
+            print(f"  Pulls EDL: {os.path.basename(edl_pulls_file_path)}")
     except Exception as e:  # Catch exception
         print(f"Error writing {edl_pulls_file_path}: {e}")  # Print error message
 
@@ -445,7 +445,7 @@ def export_google_tab(json_file_path: str, google_file_path: str):
     if os.path.exists(google_file_path): os.remove(google_file_path)    # Remove file if it exists
     try:
         with open(google_file_path, 'a') as output_file:    # Open TAB file
-            heading = '#' + '\t' + 'Name' + '\t' + 'Frame' + '\t' + 'Comments' + '\t' + 'Status' + '\t' + 'Date' + '\t' + 'Duration' + '\t' + 'Start' + '\t' +\
+            heading = '#' + '\t' + 'Name' + '\t' + 'Thumbnail' + '\t' + 'Comments' + '\t' + 'Status' + '\t' + 'Date' + '\t' + 'Duration' + '\t' + 'Start' + '\t' +\
             'End' + '\t' + 'Frame Count Duration' + '\t' + 'Handles' + '\t' + 'Tape'   # Define TAB heading
             output_file.write(heading + '\n')   # Write heading to TAB file
             counter = 1  # Define counter of events in JSON file
@@ -591,6 +591,53 @@ def compare_edls(old_events: list, new_events: list, fps_val: str, handles_val: 
     return result
 
 
+def _changelist_label(e: dict) -> str:
+    """Return a human-readable status label for a changelist event."""
+    TRIM_PART = {
+        (True,  True):  'HEAD & TAIL',
+        (True,  False): 'HEAD',
+        (False, True):  'TAIL',
+    }
+
+    def _fmt_delta(n):
+        return f'+{n}f' if n >= 0 else f'{n}f'
+
+    def _trim_delta(ev):
+        src_in_d  = ev.get('src_in_d', 0)
+        src_out_d = ev.get('src_out_d', 0)
+        h = ev.get('head_trimmed', False)
+        t = ev.get('tail_trimmed', False)
+        if h and t:
+            return f'H:{_fmt_delta(-src_in_d)} T:{_fmt_delta(src_out_d)}'
+        elif h:
+            return _fmt_delta(-src_in_d)
+        elif t:
+            return _fmt_delta(src_out_d)
+        return ''
+
+    status = e.get('change_status', 'unchanged')
+    head   = e.get('head_trimmed', False)
+    tail   = e.get('tail_trimmed', False)
+
+    if status == 'new':
+        return 'NEW - NEED TO PULL'
+    elif status == 'removed':
+        return 'REMOVED'
+    elif status == 'moved':
+        return 'MOVED'
+    elif status in ('trimmed_ok', 'trimmed_pull'):
+        trim_part = TRIM_PART.get((head, tail), 'HEAD & TAIL')
+        pull      = 'NEED TO PULL' if status == 'trimmed_pull' else 'NO PULL NEEDED'
+        delta     = _trim_delta(e)
+        return f'TRIMMED {trim_part} {delta} - {pull}' if delta else f'TRIMMED {trim_part} - {pull}'
+    elif status in ('moved_trimmed_ok', 'moved_trimmed_pull'):
+        trim_part = TRIM_PART.get((head, tail), 'HEAD & TAIL')
+        pull      = 'NEED TO PULL' if status == 'moved_trimmed_pull' else 'NO PULL NEEDED'
+        delta     = _trim_delta(e)
+        return f'MOVED TRIMMED {trim_part} {delta} - {pull}' if delta else f'MOVED TRIMMED {trim_part} - {pull}'
+    return status.upper()
+
+
 def export_changelist_markers(events: list, fps_val: str, output_path: str,
                               user: str = 'vfx', track: str = 'V1', color: str = 'green'):
     """Write a changelist markers .txt file for Avid from annotated EDL events.
@@ -598,12 +645,6 @@ def export_changelist_markers(events: list, fps_val: str, output_path: str,
     Marker timecode is placed at 1/3 of each event's record duration.
     'unchanged' events are skipped. 'removed' events use their own record TCs.
     """
-    TRIM_PART = {
-        (True,  True):  'HEAD & TAIL',
-        (True,  False): 'HEAD',
-        (False, True):  'TAIL',
-    }
-
     if os.path.exists(output_path):
         os.remove(output_path)
     try:
@@ -612,54 +653,52 @@ def export_changelist_markers(events: list, fps_val: str, output_path: str,
                 status = e.get('change_status', 'unchanged')
                 if status == 'unchanged':
                     continue
-
                 rec_start  = Timecode(fps_val, e['record_start_TC'])
                 rec_end    = Timecode(fps_val, e['record_end_TC'])
                 duration_f = rec_end.frames - rec_start.frames
                 marker_tc  = str(rec_start + duration_f // 3)
-
-                vfx_id  = e.get('VFX ID') or '[NO ID]'
-                head    = e.get('head_trimmed', False)
-                tail    = e.get('tail_trimmed', False)
-
-                def _fmt_delta(n):
-                    return f'+{n}f' if n >= 0 else f'{n}f'
-
-                def _trim_delta(ev):
-                    src_in_d  = ev.get('src_in_d', 0)
-                    src_out_d = ev.get('src_out_d', 0)
-                    h = ev.get('head_trimmed', False)
-                    t = ev.get('tail_trimmed', False)
-                    if h and t:
-                        return f'H:{_fmt_delta(-src_in_d)} T:{_fmt_delta(src_out_d)}'
-                    elif h:
-                        return _fmt_delta(-src_in_d)
-                    elif t:
-                        return _fmt_delta(src_out_d)
-                    return ''
-
-                if status == 'new':
-                    label = 'NEW - NEED TO PULL'
-                elif status == 'removed':
-                    label = 'REMOVED'
-                elif status == 'moved':
-                    label = 'MOVED'
-                elif status in ('trimmed_ok', 'trimmed_pull'):
-                    trim_part = TRIM_PART.get((head, tail), 'HEAD & TAIL')
-                    pull      = 'NEED TO PULL' if status == 'trimmed_pull' else 'NO PULL NEEDED'
-                    delta     = _trim_delta(e)
-                    label     = f'TRIMMED {trim_part} {delta} - {pull}' if delta else f'TRIMMED {trim_part} - {pull}'
-                elif status in ('moved_trimmed_ok', 'moved_trimmed_pull'):
-                    trim_part = TRIM_PART.get((head, tail), 'HEAD & TAIL')
-                    pull      = 'NEED TO PULL' if status == 'moved_trimmed_pull' else 'NO PULL NEEDED'
-                    delta     = _trim_delta(e)
-                    label     = f'MOVED TRIMMED {trim_part} {delta} - {pull}' if delta else f'MOVED TRIMMED {trim_part} - {pull}'
-                else:
-                    label = status.upper()
-
+                vfx_id     = e.get('VFX ID') or '[NO ID]'
+                label      = _changelist_label(e)
                 line = create_string('\t', user, marker_tc, track, color, f'{vfx_id} {label}', '1')
                 out.write(line + '\n')
-        print(f"Successfully exported changelist markers: {output_path}")
+        print(f"  Markers:  {os.path.basename(output_path)}")
+    except Exception as ex:
+        print(f"Error writing {output_path}: {ex}")
+
+
+def export_changelist_tab(events: list, fps_val: str, handles_val: int, output_path: str):
+    """Write a changelist TAB file (same columns as -t) from annotated EDL events."""
+    if os.path.exists(output_path):
+        os.remove(output_path)
+    try:
+        with open(output_path, 'a') as out:
+            heading = '#\tName\tThumbnail\tComments\tStatus\tDate\tDuration\tStart\tEnd\tFrame Count Duration\tHandles\tTape'
+            out.write(heading + '\n')
+            counter = 1
+            for e in events:
+                if e.get('change_status', 'unchanged') == 'unchanged':
+                    continue
+                src_start = Timecode(fps_val, e['source_start_TC'])
+                src_end   = Timecode(fps_val, e['source_end_TC'])
+                duration  = src_end - src_start
+                line = create_string(
+                    '\t',
+                    str(counter),
+                    e.get('VFX ID') or '[NO ID]',
+                    '',
+                    '',
+                    _changelist_label(e),
+                    '',
+                    str(duration),
+                    e['source_start_TC'],
+                    e['source_end_TC'],
+                    str(duration.frames),
+                    str(handles_val),
+                    e.get('reel', ''),
+                )
+                out.write(line + '\n')
+                counter += 1
+        print(f"  TAB:      {os.path.basename(output_path)}")
     except Exception as ex:
         print(f"Error writing {output_path}: {ex}")
 
@@ -898,6 +937,58 @@ def json_to_aaf(json_file_path: str, input_aaf_path: str, output_aaf_path: str,
         f.save()
 
     print(f'\nProcessed {clip_num} clips: {len(marker_data)} new markers, {len(kept_markers)} preserved → {output_aaf_path}')
+
+
+def _edit_rate_to_fps_str(numerator: int, denominator: int) -> str:
+    """Convert an AAF edit rate fraction to a FPS_CHOICES-compatible string."""
+    rate = numerator / denominator
+    for candidate in FPS_CHOICES:
+        if abs(rate - float(candidate)) < 0.01:
+            return candidate
+    return f'{rate:.3f}'.rstrip('0').rstrip('.')
+
+
+def check_aaf_project_settings(aaf_file: str, config: dict):
+    """Warn if AAF fps or resolution does not match the project config."""
+    try:
+        with aaf2.open(aaf_file, 'r') as f:
+            # --- FPS ---
+            aaf_fps = None
+            for mob in f.content.toplevel():
+                for slot in mob.slots:
+                    mk = getattr(slot, 'media_kind', None)
+                    if mk and 'picture' in str(mk).lower() and hasattr(slot.segment, 'components'):
+                        er = slot.edit_rate
+                        aaf_fps = _edit_rate_to_fps_str(er.numerator, er.denominator)
+                        break
+                if aaf_fps:
+                    break
+
+            # --- Resolution ---
+            aaf_height = None
+            for mob in f.content['Mobs']:
+                if type(mob).__name__ == 'SourceMob':
+                    desc = mob.descriptor
+                    if desc is not None and 'CDCI' in type(desc).__name__:
+                        try:
+                            aaf_height = str(desc['StoredHeight'].value)
+                        except Exception:
+                            pass
+                        break
+
+        project_fps = config.get('fps', DEFAULT_CONFIG['fps'])
+        project_res = config.get('resolution', DEFAULT_CONFIG['resolution'])
+        warnings = []
+        if aaf_fps and aaf_fps != project_fps:
+            warnings.append(f"  FPS:        AAF={aaf_fps}  project={project_fps}")
+        if aaf_height and aaf_height != project_res:
+            warnings.append(f"  Resolution: AAF={aaf_height}  project={project_res}")
+        if warnings:
+            print("Warning: AAF metadata does not match project settings:", file=sys.stderr)
+            for w in warnings:
+                print(w, file=sys.stderr)
+    except Exception as e:
+        print(f"Warning: could not read AAF metadata for settings check: {e}", file=sys.stderr)
 
 
 def check_aaf_consistency(aaf_file: str):
@@ -1323,6 +1414,7 @@ def main():
 
     parser = argparse.ArgumentParser(description='Import EDL, create project and export various stuff for AVID')
 
+    parser.add_argument('-i', '--init', action='store_true', help='Initialize project settings (Project ID, FPS, resolution, handles)')
     parser.add_argument('-e', '--edl', metavar='EDL', help='Import an EDL and create a project file')
     parser.add_argument('-a', '--aaf_read', metavar='AAF', help='Import an AAF timeline, create project and export a new AAF with VFX ID clip notes')
     parser.add_argument('-m', '--markers', action='store_true', help='Export markers and subcaps for AVID (interactive options)')
@@ -1337,16 +1429,40 @@ def main():
         parser.print_help(sys.stderr)
         sys.exit(0)
 
-    if args.edl:
-        # Load existing config for defaults (or use DEFAULT_CONFIG)
+    if args.init:
+        if os.path.exists(PROJECT_FILE):
+            with open(PROJECT_FILE) as f:
+                project = json.load(f)
+            old_config = project.get('config', DEFAULT_CONFIG.copy())
+        else:
+            project = {'config': {}, 'edl_metadata': {}, 'events': []}
+            old_config = DEFAULT_CONFIG.copy()
+        project_id, fps_val, resolution, handles_val = prompt_init_options(old_config)
+        old_config.update({
+            'ProjectID': project_id,
+            'fps': fps_val,
+            'resolution': resolution,
+            'handles': handles_val,
+        })
+        project['config'] = old_config
+        os.makedirs(PROJECT_DIR, exist_ok=True)
+        with open(PROJECT_FILE, 'w') as f:
+            json.dump(project, f, indent=2)
+        print(f"\nProject initialized:")
+        print(f"  Project ID:  {project_id}")
+        print(f"  FPS:         {fps_val}")
+        print(f"  Resolution:  {resolution}")
+        print(f"  Handles:     {handles_val}")
+    elif args.edl:
         if os.path.exists(PROJECT_FILE):
             with open(PROJECT_FILE) as f:
                 old_config = json.load(f).get('config', DEFAULT_CONFIG)
         else:
             old_config = DEFAULT_CONFIG.copy()
-        project_id, fps_val = prompt_edl_options(old_config)
-        ProjectID = project_id
-        fps = fps_val
+        project_id = old_config.get('ProjectID', DEFAULT_CONFIG['ProjectID'])
+        fps_val    = old_config.get('fps', DEFAULT_CONFIG['fps'])
+        ProjectID  = project_id
+        fps        = fps_val
         edl_data = edl_to_json(args.edl)
         edl_dir = os.path.dirname(os.path.abspath(args.edl))
         project = {
@@ -1355,6 +1471,7 @@ def main():
                 'edl_dir': edl_dir,
                 'ProjectID': project_id,
                 'fps': fps_val,
+                'resolution': old_config.get('resolution', DEFAULT_CONFIG['resolution']),
                 'handles': old_config.get('handles', DEFAULT_CONFIG['handles']),
                 'markers': old_config.get('markers', DEFAULT_CONFIG['markers']),
             },
@@ -1371,15 +1488,14 @@ def main():
         track = project['config'].get('markers', DEFAULT_CONFIG['markers']).get('track', 'V1')
         project['config']['markers'] = {'user': user, 'track': track, 'color': color, 'position': position}
         save_project(project)
+        print("\nExported:")
         json_to_markers(PROJECT_FILE, os.path.join(edl_dir, edl_stem + '_markers.txt'), user, track, color, position)
         json_to_subcaps(PROJECT_FILE, os.path.join(edl_dir, edl_stem + '_subcaps.txt'))
     elif args.pulls:
         project = load_project()
         edl_dir = project['config']['edl_dir']
         edl_stem = os.path.splitext(project['config']['edl_file'])[0]
-        handles = prompt_ale_options(project['config'])
-        project['config']['handles'] = handles
-        save_project(project)
+        print("\nExported:")
         export_ale_pulls(PROJECT_FILE, os.path.join(edl_dir, edl_stem + '.ALE'))
         export_pulls_edl(PROJECT_FILE, os.path.join(edl_dir, edl_stem + '_pulls.edl'))
     elif args.tab:
@@ -1400,8 +1516,7 @@ def main():
         ProjectID = config['ProjectID']
         fps = fps_val
         m = config.get('markers', DEFAULT_CONFIG['markers'])
-        raw = input(f"\nHandles in frames [default: {DEFAULT_CONFIG['handles']}]: ").strip()
-        handles_val = int(raw) if raw else DEFAULT_CONFIG['handles']
+        handles_val = config.get('handles') or DEFAULT_CONFIG['handles']
         handles = handles_val
         user  = input(f"AVID user name [default: {m['user']}]: ").strip() or m['user']
         track = prompt_choice("Marker track:", MARKER_TRACKS, m.get('track', 'V1'))
@@ -1432,8 +1547,11 @@ def main():
                 print(f"  {counts[key]:>3}  {label}")
         new_dir  = os.path.dirname(os.path.abspath(new_edl))
         new_stem = os.path.splitext(os.path.basename(new_edl))[0]
+        print("\nExported:")
         output_path = os.path.join(new_dir, new_stem + '_changelist_markers.txt')
         export_changelist_markers(events, fps_val, output_path, user, track, color)
+        tab_path = os.path.join(new_dir, new_stem + '_changelist_TAB.txt')
+        export_changelist_tab(events, fps_val, handles_val, tab_path)
     elif args.aaf_read:
         check_aaf_consistency(args.aaf_read)
         if os.path.exists(PROJECT_FILE):
@@ -1441,9 +1559,11 @@ def main():
                 old_config = json.load(f).get('config', DEFAULT_CONFIG)
         else:
             old_config = DEFAULT_CONFIG.copy()
-        project_id, fps_val = prompt_edl_options(old_config)
-        ProjectID = project_id
-        fps = fps_val
+        check_aaf_project_settings(args.aaf_read, old_config)
+        project_id = old_config.get('ProjectID', DEFAULT_CONFIG['ProjectID'])
+        fps_val    = old_config.get('fps', DEFAULT_CONFIG['fps'])
+        ProjectID  = project_id
+        fps        = fps_val
         aaf_file = args.aaf_read
         aaf_dir = os.path.dirname(os.path.abspath(aaf_file))
         aaf_stem = os.path.splitext(os.path.basename(aaf_file))[0]
@@ -1454,6 +1574,7 @@ def main():
                 'edl_dir': aaf_dir,
                 'ProjectID': project_id,
                 'fps': fps_val,
+                'resolution': old_config.get('resolution', DEFAULT_CONFIG['resolution']),
                 'handles': old_config.get('handles', DEFAULT_CONFIG['handles']),
                 'markers': old_config.get('markers', DEFAULT_CONFIG['markers']),
             },

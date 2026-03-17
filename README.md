@@ -28,7 +28,26 @@ pipx reinstall vfx-turnover
 
 ## Workflow Guide
 
-### 1. Create EDL from Avid
+### 1. Initialize Project
+
+Before importing any EDL or AAF, initialize the project with your settings:
+
+```
+vfx-turnover -i
+```
+
+The script prompts for:
+
+| Option | Choices | Default |
+|--------|---------|---------|
+| Project ID | any string | `PID` |
+| FPS | `23.976`, `24`, `25`, `29.97`, `30`, `59.94`, `60` | `24` |
+| Resolution | any string | `1080` |
+| Handles | frames | `10` |
+
+Settings are saved to `~/.config/vfx_turnover/vfx_project.json` and reused by all subsequent commands without prompting.
+
+### 2. Import EDL
 
 Create an EDL (File_129 or CMX3600) from the Avid video track containing only shots planned for VFX, simplify timeline by removing transitions, effects and committing groups. In List Options in Avid, check: **Clip Names**, **Source File Name**, and **Markers**.
 
@@ -38,7 +57,6 @@ Existing markers on the timeline are imported as existing VFX IDs (found in the 
 
 ![Configuration of the list tool in Avid Media Composer for EDL exporting](imgs/01_create_edl.png)
 
-Import the EDL into the project:
 ```
 vfx-turnover -e timeline.edl
 ```
@@ -53,7 +71,7 @@ Simplify the timeline in Avid before exporting (remove transitions, effects, com
 vfx-turnover -a sequence.aaf
 ```
 
-The script prompts for Film ID, FPS, user, marker color, marker position, and clip color. The project file is created and the output AAF is saved next to the source AAF with `_new` appended.
+The project file is created using the settings from `-i`. The script then prompts for user, marker color, marker position, and clip color. The output AAF is saved next to the source AAF with `_new` appended.
 
 Before exporting, the script scans the full timeline and checks for inconsistencies: if any clip already has both a clip note and a timeline marker but they carry different VFX IDs, all mismatches are reported and the script exits without writing any file:
 
@@ -74,7 +92,7 @@ Resolve the mismatches in Avid before re-running.
 
 ---
 
-### 2. Export Markers and Subcaps
+### 3. Export Markers and Subcaps
 
 Export markers and subcaps and import them into Avid to help keep track of VFX shots.
 
@@ -91,13 +109,13 @@ Both a markers file and a subcaps file are exported in one step. The script prom
 | Marker color | `green`, `red`, `blue`, `cyan`, `magenta`, `yellow`, `black`, `white` | `green` |
 | Marker position | `start`, `middle` | `middle` |
 
-### 3. Export Frames
+### 4. Export Frames
 
 Export markers from Avid as JPGs to use them to build a VFX shots database.
 
 ![Export settings for frame extraction at marker's position](imgs/02_export_frames.png)
 
-### 4. Export TAB Text File
+### 5. Export TAB Text File
 
 Export a TAB-delimited file with VFX IDs info, importable in any database or spreadsheet to build a VFX shot database.
 
@@ -111,7 +129,7 @@ The exported file contains one row per shot with the following columns:
 |--------|-------------|
 | `#` | Shot counter |
 | `Name` | VFX ID |
-| `Frame` | *(empty — for thumbnail reference)* |
+| `Thumbnail` | *(empty — for thumbnail reference)* |
 | `Comments` | *(empty)* |
 | `Status` | *(empty)* |
 | `Date` | *(empty)* |
@@ -122,15 +140,14 @@ The exported file contains one row per shot with the following columns:
 | `Pull Handles` | Handle frames configured for the project |
 | `Tape` | Source reel / tape name |
 
-### 5. Export ALE Pulls and Pulls EDL
+### 6. Export ALE Pulls and Pulls EDL
 
-Export an ALE to create pull subclips and a Pulls EDL to cut them into a timeline — both exported in one step.
+Export an ALE to create pull subclips and a Pulls EDL to cut them into a timeline — both exported in one step using the handle frames set in `-i`.
 
 ```
 vfx-turnover -p
 ```
 
-The script prompts for handle frames, then exports:
 - **ALE file** — drag onto the Avid bin after selecting master clips. Import settings: *Merge events with known sources and automatically create subclips*.
 - **Pulls EDL** — import into an Avid bin and relink to pull subclips using Names.
 
@@ -138,18 +155,21 @@ The script prompts for handle frames, then exports:
 
 ![Relink configuration](imgs/04_relink_edl_pulls_v02.png)
 
-### 6. Compare EDL Versions (Changelist)
+### 7. Compare EDL Versions (Changelist)
 
-When the editor delivers a revised EDL, compare it against the loaded project to generate a changelist markers file for Avid. Clips are matched by VFX ID (from `*LOC` markers) or by reel + source timecode as fallback.
+When the editor delivers a revised EDL, compare it against the loaded project to generate a changelist markers file and TAB file for Avid. Clips are matched by VFX ID (from `*LOC` markers) or by reel + source timecode as fallback.
 
 ```
 vfx-turnover -c new_timeline.edl
 ```
 
-The script prompts for handles, AVID user, track, and marker color, then exports a `_changelist_markers.txt` file next to the new EDL. Each changed clip gets a marker with a label describing what changed:
+Handle frames are read from the project config (set via `-i`). The script prompts for AVID user, track, and marker color, then exports two files next to the new EDL:
 
-| Status | Marker label |
-|--------|-------------|
+- **`_changelist_markers.txt`** — Avid markers file; each changed clip gets a marker with a status label
+- **`_changelist_TAB.txt`** — same columns as `-t`, with the change status in the `Status` column
+
+| Status | Label |
+|--------|-------|
 | New clip | `VFX_ID NEW - NEED TO PULL` |
 | Removed clip | `VFX_ID REMOVED` |
 | Moved (record TC shift) | `VFX_ID MOVED` |
@@ -159,9 +179,9 @@ The script prompts for handles, AVID user, track, and marker color, then exports
 | Both ends trimmed | `VFX_ID TRIMMED HEAD & TAIL H:-3f T:+8f - NO PULL NEEDED` |
 | Moved and trimmed | `VFX_ID MOVED TRIMMED TAIL +4f - NEED TO PULL` |
 
-Frame deltas use `+` when the clip is extended and `-` when it is reduced. A trim is considered within handles (no new pull needed) when the source content added at each end stays within the configured handle frames (default: `10`).
+Frame deltas use `+` when the clip is extended and `-` when it is reduced. A trim is considered within handles (no new pull needed) when the source content added at each end stays within the handle frames configured in `-i`.
 
-### 7. VFX Cut-ins
+### 8. VFX Cut-ins
 
 When you receive incoming VFX (`.mov` files), import them into Avid, then export the bin in TAB format. Use the TAB file to generate an EDL for cutting the VFX into the timeline. Required bin columns: **Color**, **Name**, **Duration**, **Start**, **End**, **Tape**.
 
@@ -177,13 +197,14 @@ vfx-turnover -f avid_bin.txt
 
 | Option | Description |
 |--------|-------------|
+| `-i` | Initialize project settings (Project ID, FPS, resolution, handles) |
 | `-e timeline.edl` | Import an EDL and create/update the project file |
 | `-a sequence.aaf` | Import an AAF timeline, create project and export a new AAF with VFX ID clip notes, markers and clip color |
 | `-m` | Export markers and subcaps for Avid (interactive options) |
 | `-p` | Export ALE and Pulls EDL for creating pulls in Avid bin |
 | `-t` | Export a TAB-delimited text file for spreadsheet import |
 | `-f avid_bin.txt` | Export an EDL to cut in final VFX shots (requires Avid bin TAB) |
-| `-c new.edl` | Compare new EDL against loaded project and export a changelist markers file |
+| `-c new.edl` | Compare new EDL against loaded project and export changelist markers and TAB files |
 
 All exported files are saved in the same folder as the original EDL.
 
@@ -191,16 +212,11 @@ All exported files are saved in the same folder as the original EDL.
 
 ## Settings
 
+Initialized with `-i` and persisted at `~/.config/vfx_turnover/vfx_project.json`.
+
 | Setting | Description | Default |
 |---------|-------------|---------|
 | Project ID | Project identifier used in VFX IDs | `PID` |
 | FPS | Frame rate for timecode calculations | `24` |
-| Pull Handles | Extra frames added to pulls | `10` |
-
-Project settings are persisted at:
-
-```
-~/.config/vfx_turnover/vfx_project.json
-```
-
-This file is created automatically on first run and stores parameters such as the project name and configuration values, so they don't need to be re-entered each session.
+| Resolution | Output resolution | `1080` |
+| Handles | Extra frames added to pulls | `10` |
