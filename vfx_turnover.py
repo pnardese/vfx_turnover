@@ -1120,7 +1120,8 @@ def check_aaf_consistency(aaf_file: str):
     if clips_with_id > 0 and missing_id:
         print(f"Error: AAF has VFX IDs on some clips but {len(missing_id)} clip(s) are missing both marker and clip note:", file=sys.stderr)
         for clip_name, tc in missing_id:
-            print(f"  [{tc}]  {clip_name}", file=sys.stderr)
+            print(f"  [{tc}]", file=sys.stderr)
+        print("Resolve the mismatches in Avid before re-running.", file=sys.stderr)
         sys.exit(1)
 
     if inconsistencies:
