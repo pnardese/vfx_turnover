@@ -112,6 +112,12 @@ Both a markers file and a subcaps file are exported in one step. The script prom
 | Marker color | `green`, `red`, `blue`, `cyan`, `magenta`, `yellow`, `black`, `white` | `green` |
 | Marker position | `start`, `middle` | `middle` |
 
+To export only the subcaps file without prompts:
+
+```
+vfx-turnover -s
+```
+
 ### 4. Export Frames
 
 Export markers from Avid as JPGs to use them to build a VFX shots database.
@@ -204,6 +210,7 @@ vfx-turnover -f avid_bin.txt
 | `-e timeline.edl` | Import an EDL and create/update the project file |
 | `-a sequence.aaf` | Import an AAF timeline, create project and export a new AAF with VFX ID clip notes, markers and clip color |
 | `-m` | Export markers and subcaps for Avid (interactive options) |
+| `-s` | Export subcaps file for Avid |
 | `-p` | Export ALE and Pulls EDL for creating pulls in Avid bin |
 | `-t` | Export a TAB-delimited text file for spreadsheet import |
 | `-f avid_bin.txt` | Export an EDL to cut in final VFX shots (requires Avid bin TAB) |

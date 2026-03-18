@@ -1434,6 +1434,7 @@ def main():
     parser.add_argument('-e', '--edl', metavar='EDL', help='Import an EDL and create a project file')
     parser.add_argument('-a', '--aaf_read', metavar='AAF', help='Import an AAF timeline, create project and export a new AAF with VFX ID clip notes')
     parser.add_argument('-m', '--markers', action='store_true', help='Export markers and subcaps for AVID (interactive options)')
+    parser.add_argument('-s', '--subcaps', action='store_true', help='Export subcaps file for AVID')
     parser.add_argument('-p', '--pulls', action='store_true', help='Export ALE and EDL files for creating pulls in AVID bin')
     parser.add_argument('-t', '--tab', action='store_true', help='Export TAB file to import into a Spreadsheet')
     parser.add_argument('-f', '--final', metavar='BIN', help='Export EDL for cutting in final vfx in AVID, requires an AVID bin (TAB)')
@@ -1506,6 +1507,12 @@ def main():
         save_project(project)
         print("\nExported:")
         json_to_markers(PROJECT_FILE, os.path.join(edl_dir, edl_stem + '_markers.txt'), user, track, color, position)
+        json_to_subcaps(PROJECT_FILE, os.path.join(edl_dir, edl_stem + '_subcaps.txt'))
+    elif args.subcaps:
+        project = load_project()
+        edl_dir = project['config']['edl_dir']
+        edl_stem = os.path.splitext(project['config']['edl_file'])[0]
+        print("\nExported:")
         json_to_subcaps(PROJECT_FILE, os.path.join(edl_dir, edl_stem + '_subcaps.txt'))
     elif args.pulls:
         project = load_project()
