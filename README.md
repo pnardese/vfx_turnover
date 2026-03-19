@@ -55,6 +55,10 @@ VFX IDs are generated automatically based on scene numbers: `ProjectID_Scene_num
 
 Existing markers on the timeline are imported as existing VFX IDs (found in the EDL as `*LOC` lines). If you add VFX shots in Avid, add markers with their new VFX IDs before re-importing.
 
+Marker comments may include a job description after the VFX ID (e.g. `GDN_033_0010 - REMOVE BACKGROUND`). The script reads only the VFX ID (first word) and stores the job description separately. The job description is included in the exported markers file and in the TAB `Comments` column.
+
+> **Note:** Multicam/MultiGroup clips must be committed in Avid before exporting the EDL — uncommitted clips may produce wrong source timecodes or missing reel names.
+
 ![Configuration of the list tool in Avid Media Composer for EDL exporting](imgs/01_create_edl.png)
 
 ```
@@ -65,7 +69,7 @@ vfx-turnover -e timeline.edl
 
 If no EDL is available, you can import the VFX sequence directly from an Avid AAF export. This reads the timeline clips, extracts scene numbers from the Avid clip names, and writes VFX IDs as clip notes, timeline markers, and clip color into a new AAF — all in one step.
 
-Simplify the timeline in Avid before exporting (remove transitions, effects, commit groups), then export the sequence as AAF and run:
+Simplify the timeline in Avid before exporting (remove transitions, effects, commit groups — including multicam/MultiGroup clips), then export the sequence as AAF and run:
 
 ```
 vfx-turnover -a sequence.aaf
@@ -78,6 +82,7 @@ The project file is created using the settings from `-i`. The script warns if th
 - **No markers and no clip notes** → VFX IDs are auto-generated from scene numbers (`ProjectID_Scene_num`, 4-digit counter)
 - **Some clips missing both marker and clip note** → script stops with an error listing the affected timecodes; resolve in Avid before re-running
 - **Clip has marker only, or clip note only** → that ID is used; the other source is ignored
+- **Job descriptions** in clip notes or markers (e.g. `GDN_033_0010 - REMOVE BACKGROUND`) are stripped from the VFX ID but preserved and written back to both clip note and marker in the output AAF
 - **Clip has both marker and clip note with different values** → script stops with a mismatch error:
 
 ```
@@ -139,7 +144,7 @@ The exported file contains one row per shot with the following columns:
 | `#` | Shot counter |
 | `Name` | VFX ID |
 | `Thumbnail` | *(empty — for thumbnail reference)* |
-| `Comments` | *(empty)* |
+| `Comments` | Job description if present (e.g. `- REMOVE BACKGROUND`), otherwise empty |
 | `Status` | *(empty)* |
 | `Date` | *(empty)* |
 | `Duration` | Source clip duration as timecode |

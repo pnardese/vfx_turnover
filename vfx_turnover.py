@@ -82,6 +82,7 @@ def edl_to_json(edl_file: str):
                 "LOC": "",
                 "SOURCE": "",
                 "VFX ID": "",
+                "job_description": "",
             }
         else:
             return None
@@ -115,7 +116,10 @@ def edl_to_json(edl_file: str):
                     loc_index = line.find("LOC:")
                     loc_value = line[loc_index + 4:].strip()
                     last_event["LOC"] = loc_value
-                    last_event["VFX ID"] = loc_value.split()[-1]
+                    # LOC format: <timecode> <color> <VFX_ID> [job description...]
+                    loc_parts = loc_value.split()
+                    last_event["VFX ID"] = loc_parts[2] if len(loc_parts) > 2 else ""
+                    last_event["job_description"] = ' '.join(loc_parts[3:]) if len(loc_parts) > 3 else ""
                 elif line.startswith("*SOURCE") or line.startswith("* SOURCE"):
                     source_index = line.find("SOURCE")
                     source_value = line[source_index + 6:].strip()
@@ -169,7 +173,7 @@ def prompt_init_options(config):
     return project_id, fps_val, resolution, handles_val
 
 
-MARKER_TRACKS = ['TC'] + [f'V{i}' for i in range(1, 9)]
+MARKER_TRACKS = ['TC', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8']
 MARKER_COLORS = ['green', 'red', 'blue', 'cyan', 'magenta', 'yellow', 'black', 'white']
 MARKER_POSITIONS = ['start', 'middle']
 
@@ -246,10 +250,11 @@ def prompt_markers_options(config) -> tuple:
     """Interactive prompts for markers export options."""
     m = config.get('markers', DEFAULT_CONFIG['markers'])
     user = input(f"\nAVID user name [default: {m['user']}]: ").strip() or m['user']
+    track = prompt_choice("Track:", MARKER_TRACKS, m['track'])
     color = prompt_choice("Marker color:", MARKER_COLORS, m['color'])
     position = prompt_choice("Marker position:", MARKER_POSITIONS, m['position'])
     print()
-    return user, color, position
+    return user, track, color, position
 
 
 def _rgb_to_ansi256(r: int, g: int, b: int) -> int:
@@ -334,7 +339,10 @@ def json_to_markers(json_file_path: str, markers_file_path: str, user: str = 'vf
                     marker_tc = str(rec_start + half_duration)
                 else:
                     marker_tc = json_file['events'][i]['record_start_TC']
-                markers_file_line = create_string('\t', user, marker_tc, track_number, marker_color, json_file['events'][i]['VFX ID'], '1') # Define markers file line
+                vfx_id = json_file['events'][i]['VFX ID']
+                job_desc = json_file['events'][i].get('job_description', '')
+                comment = f"{vfx_id} {job_desc}".strip() if job_desc else vfx_id
+                markers_file_line = create_string('\t', user, marker_tc, track_number, marker_color, comment, '1') # Define markers file line
                 # markers_file_line = user + '\t' + json_file['events'][i]['record_start_TC'] + '\t' + track_number + '\t' + marker_color + '\t' + \
                 # json_file['events'][i]['VFX ID'] + '\t' + '1' + '\n' # Define markers file line
                 output_file.write(markers_file_line + '\n') # Write line to markers file
@@ -459,7 +467,7 @@ def export_google_tab(json_file_path: str, google_file_path: str):
                     str(counter),
                     json_file['events'][i]['VFX ID'],
                     '',
-                    '',
+                    json_file['events'][i].get('job_description', ''),
                     '',
                     '',
                     str(duration),
@@ -813,6 +821,7 @@ def json_to_aaf(json_file_path: str, input_aaf_path: str, output_aaf_path: str,
 
                 vfx_id = events[clip_num - 1]['VFX ID']
                 has_clip_note = events[clip_num - 1].get('has_clip_note', False)
+                job_desc = events[clip_num - 1].get('job_description', '')
 
                 # Check for existing marker at this clip's position directly in the AAF
                 existing_marker = None
@@ -824,12 +833,14 @@ def json_to_aaf(json_file_path: str, input_aaf_path: str, output_aaf_path: str,
                         if attrs:
                             for tag in attrs:
                                 if tag.name == '_ATN_CRM_COM' and tag.value:
-                                    marker_vfx_id = tag.value
+                                    marker_vfx_id = tag.value.split()[0]
                                     break
                         break
 
                 # VFX ID: use marker's if available, else fall back to JSON
                 effective_vfx_id = marker_vfx_id if marker_vfx_id else vfx_id
+                # Full string written to both clip note and marker (VFX ID + job description if present)
+                full_id = f"{effective_vfx_id} {job_desc}".strip() if job_desc else effective_vfx_id
 
                 # Get or create ComponentAttributeList (needed for both clip note and clip color)
                 attr_list = target.get('ComponentAttributeList')
@@ -844,13 +855,13 @@ def json_to_aaf(json_file_path: str, input_aaf_path: str, output_aaf_path: str,
                     found = False
                     for attr in attr_list:
                         if attr.name == '_COMMENT':
-                            attr.value = effective_vfx_id
+                            attr.value = full_id
                             found = True
                             break
                     if not found:
                         tv = f.create.TaggedValue()
                         tv['Name'].value = '_COMMENT'
-                        tv['Value'].value = effective_vfx_id
+                        tv['Value'].value = full_id
                         attr_list.append(tv)
 
                 # Write clip color
@@ -869,17 +880,24 @@ def json_to_aaf(json_file_path: str, input_aaf_path: str, output_aaf_path: str,
                             tv['Value'].value = val
                             attr_list.append(tv)
 
-                # Marker: preserve existing or queue a new one
+                # Marker: update existing or queue a new one
                 if existing_marker is not None:
+                    existing_marker['Comment'].value = full_id
+                    attrs = existing_marker.get('CommentMarkerAttributeList')
+                    if attrs:
+                        for tag in attrs:
+                            if tag.name == '_ATN_CRM_COM':
+                                tag.value = full_id
+                                break
                     kept_markers.append(existing_marker)
-                    mark_str = 'kept'
+                    mark_str = 'updated'
                 else:
                     marker_frame = timeline_pos + length // 2 if position == 'middle' else timeline_pos
-                    marker_data.append((marker_frame, effective_vfx_id))
+                    marker_data.append((marker_frame, full_id))
                     mark_str = f'new @ {marker_frame}'
 
                 note_str = 'updated' if existing_marker is not None else ('kept' if has_clip_note else 'new')
-                print(f'  Clip {clip_num}: {clip_name} -> {effective_vfx_id}  (note: {note_str}, marker: {mark_str})')
+                print(f'  Clip {clip_num}: {clip_name} -> {full_id}  (note: {note_str}, marker: {mark_str})')
                 timeline_pos += length
 
             if clip_num < len(events):
@@ -1098,13 +1116,13 @@ def check_aaf_consistency(aaf_file: str):
                 if attr_list:
                     for attr in attr_list:
                         if attr.name == '_COMMENT' and attr.value:
-                            clip_note_id = attr.value
+                            clip_note_id = attr.value.split()[0]
                             break
 
             marker_id = None
             for pos, vid in existing_markers.items():
                 if timeline_pos <= pos < timeline_pos + length:
-                    marker_id = vid
+                    marker_id = vid.split()[0]
                     break
 
             if clip_note_id or marker_id:
@@ -1320,19 +1338,25 @@ def aaf_to_json(aaf_file: str) -> dict:
 
             # Check for existing clip note (_COMMENT on ComponentAttributeList)
             clip_note_id = None
+            clip_note_desc = ""
             if target_comp is not None:
                 attr_list = target_comp.get('ComponentAttributeList')
                 if attr_list:
                     for attr in attr_list:
                         if attr.name == '_COMMENT' and attr.value:
-                            clip_note_id = attr.value
+                            parts = attr.value.split(None, 1)
+                            clip_note_id = parts[0]
+                            clip_note_desc = parts[1] if len(parts) > 1 else ""
                             break
 
             # Check for existing marker within this clip's timeline range
             marker_id = None
+            marker_desc = ""
             for pos, vid in existing_markers.items():
                 if timeline_pos <= pos < timeline_pos + length:
-                    marker_id = vid
+                    parts = vid.split(None, 1)
+                    marker_id = parts[0]
+                    marker_desc = parts[1] if len(parts) > 1 else ""
                     break
 
             # Generate VFX ID from subclip name (has scene number, same as *FROM CLIP NAME in EDL)
@@ -1350,6 +1374,7 @@ def aaf_to_json(aaf_file: str) -> dict:
             generated_id = create_string('_', ProjectID, scene_clip, str(VFX_counter).rjust(4, '0'))
             # Use existing VFX ID if found (clip note takes priority over marker); otherwise generated
             vfx_id = clip_note_id or marker_id or generated_id
+            job_description = clip_note_desc or marker_desc
 
             event = {
                 "type": "event",
@@ -1365,6 +1390,7 @@ def aaf_to_json(aaf_file: str) -> dict:
                 "LOC": "",
                 "SOURCE": reel_name,
                 "VFX ID": vfx_id,
+                "job_description": job_description,
                 "has_clip_note": bool(clip_note_id),
                 "has_marker": bool(marker_id),
             }
@@ -1501,8 +1527,7 @@ def main():
         project = load_project()
         edl_dir = project['config']['edl_dir']
         edl_stem = os.path.splitext(project['config']['edl_file'])[0]
-        user, color, position = prompt_markers_options(project['config'])
-        track = project['config'].get('markers', DEFAULT_CONFIG['markers']).get('track', 'V1')
+        user, track, color, position = prompt_markers_options(project['config'])
         project['config']['markers'] = {'user': user, 'track': track, 'color': color, 'position': position}
         save_project(project)
         print("\nExported:")
