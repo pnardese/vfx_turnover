@@ -47,7 +47,11 @@ The script prompts for:
 
 Settings are saved to `~/.config/vfx_turnover/vfx_project.json` and reused by all subsequent commands without prompting.
 
-### 2. Import EDL
+### 2. Import EDL or AAF
+
+The `-e` command accepts both EDL and AAF files and saves the project data to the project JSON.
+
+**Import from EDL**
 
 Create an EDL (File_129 or CMX3600) from the Avid video track containing only shots planned for VFX, simplify timeline by removing transitions, effects and committing groups. In List Options in Avid, check: **Clip Names**, **Source File Name**, and **Markers**.
 
@@ -65,25 +69,23 @@ Marker comments may include a job description after the VFX ID (e.g. `GDN_033_00
 vfx-turnover -e timeline.edl
 ```
 
-### Alternative: Import from AAF
+**Import from AAF**
 
-If no EDL is available, you can import the VFX sequence directly from an Avid AAF export. This reads the timeline clips, extracts scene numbers from the Avid clip names, and writes VFX IDs as clip notes, timeline markers, and clip color into a new AAF — all in one step.
-
-Simplify the timeline in Avid before exporting (remove transitions, effects, commit groups — including multicam/MultiGroup clips), then export the sequence as AAF and run:
+If no EDL is available, you can import the VFX sequence directly from an Avid AAF export. Simplify the timeline in Avid before exporting (remove transitions, effects, commit groups — including multicam/MultiGroup clips), then export the sequence as AAF and run:
 
 ```
-vfx-turnover -a sequence.aaf
+vfx-turnover -e sequence.aaf
 ```
 
-The project file is created using the settings from `-i`. The script warns if the AAF fps or resolution does not match the project config. It then prompts for user, marker color, marker position, and clip color. The output AAF is saved next to the source AAF with `_new` appended.
+The project file is created using the settings from `-i`. The script warns if the AAF fps or resolution does not match the project config.
 
-**VFX ID handling** follows the same rules as EDL import:
+**VFX ID handling** for AAF import:
 
 - **No markers and no clip notes** → VFX IDs are auto-generated from scene numbers (`ProjectID_Scene_num`, 4-digit counter)
-- **Some clips missing both marker and clip note** → script stops with an error listing the affected timecodes; resolve in Avid before re-running
+- **Some clips missing both marker and clip note** → script stops with an error listing the affected clips and timecodes; resolve in Avid before re-running
 - **Clip has marker only, or clip note only** → that ID is used; the other source is ignored
-- **Job descriptions** in clip notes or markers (e.g. `GDN_033_0010 - REMOVE BACKGROUND`) are stripped from the VFX ID but preserved and written back to both clip note and marker in the output AAF
-- **Clip has both marker and clip note with different values** → script stops with a mismatch error:
+- **Job descriptions** in clip notes or markers (e.g. `GDN_033_0010 - REMOVE BACKGROUND`) are stripped from the VFX ID but preserved and written back to both clip note and marker when exporting
+- **Clip has both marker and clip note with different values** → script stops with a mismatch error (checked at export time via `-a`):
 
 ```
 Error: 2 VFX ID mismatch(es) found — fix the source AAF before exporting:
@@ -97,6 +99,25 @@ Error: 2 VFX ID mismatch(es) found — fix the source AAF before exporting:
 ```
 
 Resolve the mismatches in Avid before re-running.
+
+### 2b. Export AAF with VFX IDs
+
+After importing an AAF with `-e`, export a new AAF with VFX IDs written as clip notes, timeline markers, and clip color:
+
+```
+vfx-turnover -a
+```
+
+The script prompts for:
+
+| Option | Choices | Default |
+|--------|---------|---------|
+| AVID user name | any string | `vfx` |
+| Marker color | `green`, `red`, `blue`, `cyan`, `magenta`, `yellow`, `black`, `white` | `green` |
+| Marker position | `start`, `middle` | `start` |
+| Clip color | 32 Avid colors or `none` | `none` |
+
+The output AAF is saved next to the source AAF with `_new` appended (e.g. `sequence_new.aaf`). The project JSON is updated with the clip notes written to the AAF.
 
 ---
 
@@ -212,8 +233,8 @@ vfx-turnover -f avid_bin.txt
 | Option | Description |
 |--------|-------------|
 | `-i` | Initialize project settings (Project ID, FPS, resolution, handles) |
-| `-e timeline.edl` | Import an EDL and create/update the project file |
-| `-a sequence.aaf` | Import an AAF timeline, create project and export a new AAF with VFX ID clip notes, markers and clip color |
+| `-e FILE` | Import an EDL or AAF and create/update the project file |
+| `-a` | Export a new AAF with VFX ID clip notes, markers and clip color (requires project imported from AAF via `-e`) |
 | `-m` | Export markers and subcaps for Avid (interactive options) |
 | `-s` | Export subcaps file for Avid |
 | `-p` | Export ALE and Pulls EDL for creating pulls in Avid bin |
@@ -221,7 +242,7 @@ vfx-turnover -f avid_bin.txt
 | `-f avid_bin.txt` | Export an EDL to cut in final VFX shots (requires Avid bin TAB) |
 | `-c new.edl` | Compare new EDL against loaded project and export changelist markers and TAB files |
 
-All exported files are saved in the same folder as the original EDL.
+All exported files are saved in the same folder as the original EDL or AAF. If an output file already exists, the script will ask for confirmation before overwriting.
 
 ---
 
