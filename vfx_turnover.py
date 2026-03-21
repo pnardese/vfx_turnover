@@ -1666,6 +1666,8 @@ def main():
             vfx_id  = event['VFX ID']
             job_desc = event.get('job_description', '')
             event['clip_note'] = f"{vfx_id} {job_desc}".strip() if job_desc else vfx_id
+            if clip_color != 'none':
+                event['color'] = clip_color
         save_project(project)
 
 
