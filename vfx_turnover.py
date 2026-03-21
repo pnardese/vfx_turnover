@@ -42,7 +42,7 @@ def load_project():
     """Load project file, set globals, return data dict."""
     global ProjectID, fps, handles
     if not os.path.exists(PROJECT_FILE):
-        print(f"Error: No project file found. Run -e first to import an EDL.", file=sys.stderr)
+        print(f"Error: No project file found. Run -e first to import an EDL or AAF.", file=sys.stderr)
         sys.exit(1)
     with open(PROJECT_FILE) as f:
         project = json.load(f)
@@ -58,6 +58,14 @@ def save_project(project):
     os.makedirs(PROJECT_DIR, exist_ok=True)
     with open(PROJECT_FILE, 'w') as f:
         json.dump(project, f, indent=4)
+
+
+def confirm_overwrite(path: str) -> bool:
+    """Return True if OK to write path — either it doesn't exist, or the user confirms."""
+    if not os.path.exists(path):
+        return True
+    answer = input(f"  {os.path.basename(path)} already exists. Overwrite? [y/N]: ").strip().lower()
+    return answer in ('y', 'yes')
 
 
 def edl_to_json(edl_file: str):
@@ -83,6 +91,8 @@ def edl_to_json(edl_file: str):
                 "SOURCE": "",
                 "VFX ID": "",
                 "job_description": "",
+                "clip_note": "",
+                "color": "",
             }
         else:
             return None
@@ -328,9 +338,10 @@ def json_to_markers(json_file_path: str, markers_file_path: str, user: str = 'vf
     with open(json_file_path) as input_file:
         json_file = json.load(input_file) # Load JSON file
 
-    if os.path.exists(markers_file_path): os.remove(markers_file_path) # Remove file if it exists
+    if not confirm_overwrite(markers_file_path):
+        return
     try:
-        with open(markers_file_path, 'a') as output_file: # Open markers file
+        with open(markers_file_path, 'w') as output_file: # Open markers file
             for i in range(len(json_file['events'])): # Loop through JSON file
                 if position == 'middle':
                     rec_start = Timecode(fps, json_file['events'][i]['record_start_TC'])
@@ -357,9 +368,10 @@ def json_to_subcaps(json_file_path: str, sub_file_path: str):
     with open(json_file_path) as input_file:
         json_file = json.load(input_file) # Load JSON file
 
-    if os.path.exists(sub_file_path): os.remove(sub_file_path) # Remove file if it exists
+    if not confirm_overwrite(sub_file_path):
+        return
     try:
-        with open(sub_file_path, 'a') as output_file:
+        with open(sub_file_path, 'w') as output_file:
             sub_file_line = '<begin subtitles>\n' # Define start of subcaps file
             output_file.write(sub_file_line)
             for i in range(len(json_file['events'])): # Loop through JSON file
@@ -392,9 +404,10 @@ Data\n\
     with open(json_file_path) as input_file:
         json_file = json.load(input_file) # Load JSON file
     
-    if os.path.exists(ale_pulls_file_path): os.remove(ale_pulls_file_path) # Remove file if it exists
+    if not confirm_overwrite(ale_pulls_file_path):
+        return
     try:
-        with open(ale_pulls_file_path, 'a') as output_file:
+        with open(ale_pulls_file_path, 'w') as output_file:
             output_file.write(heading) # Write heading to ALE file
             for i in range(len(json_file['events'])):
                 new_source_start_TC = Timecode(fps, json_file['events'][i]['source_start_TC']) - handles # Define new source start timecode with handles
@@ -417,9 +430,10 @@ def export_pulls_edl(json_file_path: str, edl_pulls_file_path: str):
     with open(json_file_path) as input_file:
         json_file = json.load(input_file) # Load JSON file
     
-    if os.path.exists(edl_pulls_file_path): os.remove(edl_pulls_file_path) # Remove file if it exists
+    if not confirm_overwrite(edl_pulls_file_path):
+        return
     try:
-        with open(edl_pulls_file_path, 'a') as output_file: # Open EDL file
+        with open(edl_pulls_file_path, 'w') as output_file: # Open EDL file
             heading = 'TITLE: ' + os.path.splitext(os.path.basename(edl_pulls_file_path))[0]+ '\n'\
             'FCM: NON-DROP FRAME\n' # Define EDL heading
             output_file.write(heading) # Write heading to EDL file
@@ -450,9 +464,10 @@ def export_google_tab(json_file_path: str, google_file_path: str):
     
     with open(json_file_path) as input_file:    # Open JSON file
         json_file = json.load(input_file)   # Load JSON file
-    if os.path.exists(google_file_path): os.remove(google_file_path)    # Remove file if it exists
+    if not confirm_overwrite(google_file_path):
+        return
     try:
-        with open(google_file_path, 'a') as output_file:    # Open TAB file
+        with open(google_file_path, 'w') as output_file:    # Open TAB file
             heading = '#' + '\t' + 'Name' + '\t' + 'Thumbnail' + '\t' + 'Comments' + '\t' + 'Status' + '\t' + 'Date' + '\t' + 'Duration' + '\t' + 'Start' + '\t' +\
             'End' + '\t' + 'Frame Count Duration' + '\t' + 'Handles' + '\t' + 'Tape'   # Define TAB heading
             output_file.write(heading + '\n')   # Write heading to TAB file
@@ -653,10 +668,10 @@ def export_changelist_markers(events: list, fps_val: str, output_path: str,
     Marker timecode is placed at 1/3 of each event's record duration.
     'unchanged' events are skipped. 'removed' events use their own record TCs.
     """
-    if os.path.exists(output_path):
-        os.remove(output_path)
+    if not confirm_overwrite(output_path):
+        return
     try:
-        with open(output_path, 'a') as out:
+        with open(output_path, 'w') as out:
             for e in events:
                 status = e.get('change_status', 'unchanged')
                 if status == 'unchanged':
@@ -676,10 +691,10 @@ def export_changelist_markers(events: list, fps_val: str, output_path: str,
 
 def export_changelist_tab(events: list, fps_val: str, handles_val: int, output_path: str):
     """Write a changelist TAB file (same columns as -t) from annotated EDL events."""
-    if os.path.exists(output_path):
-        os.remove(output_path)
+    if not confirm_overwrite(output_path):
+        return
     try:
-        with open(output_path, 'a') as out:
+        with open(output_path, 'w') as out:
             heading = '#\tName\tThumbnail\tComments\tStatus\tDate\tDuration\tStart\tEnd\tFrame Count Duration\tHandles\tTape'
             out.write(heading + '\n')
             counter = 1
@@ -741,6 +756,8 @@ def json_to_aaf(json_file_path: str, input_aaf_path: str, output_aaf_path: str,
     color_str, color_rgb = MARKER_COLOR_MAP.get(color.lower(), MARKER_COLOR_MAP['green'])
     now_ts = int(time.time())
 
+    if not confirm_overwrite(output_aaf_path):
+        return
     shutil.copy2(input_aaf_path, output_aaf_path)
 
     with aaf2.open(output_aaf_path, 'rw') as f:
@@ -1204,6 +1221,7 @@ def aaf_to_json(aaf_file: str) -> dict:
         base_tc = Timecode(fps, tc_start_str)
         event_num = 0
         timeline_pos = 0
+        event_lines = []
 
         # Collect existing markers from EventMobSlot for VFX ID reuse detection
         existing_markers = {}  # {position: vfx_id}
@@ -1336,18 +1354,29 @@ def aaf_to_json(aaf_file: str) -> dict:
             rec_start_tc = str(base_tc + timeline_pos)
             rec_end_tc = str(base_tc + (timeline_pos + length))
 
-            # Check for existing clip note (_COMMENT on ComponentAttributeList)
+            # Check for existing clip note and color (_COMMENT, _COLOR_R/G/B on ComponentAttributeList)
+            clip_note_raw = ""
             clip_note_id = None
             clip_note_desc = ""
+            color_vals = {}
             if target_comp is not None:
                 attr_list = target_comp.get('ComponentAttributeList')
                 if attr_list:
                     for attr in attr_list:
                         if attr.name == '_COMMENT' and attr.value:
+                            clip_note_raw = attr.value
                             parts = attr.value.split(None, 1)
                             clip_note_id = parts[0]
                             clip_note_desc = parts[1] if len(parts) > 1 else ""
-                            break
+                        elif attr.name in ('_COLOR_R', '_COLOR_G', '_COLOR_B'):
+                            color_vals[attr.name] = attr.value
+            clip_color = 'none'
+            if len(color_vals) == 3:
+                r16, g16, b16 = color_vals['_COLOR_R'], color_vals['_COLOR_G'], color_vals['_COLOR_B']
+                for name, vals in CLIP_COLOR_MAP.items():
+                    if vals == (r16, g16, b16):
+                        clip_color = name
+                        break
 
             # Check for existing marker within this clip's timeline range
             marker_id = None
@@ -1391,6 +1420,8 @@ def aaf_to_json(aaf_file: str) -> dict:
                 "SOURCE": reel_name,
                 "VFX ID": vfx_id,
                 "job_description": job_description,
+                "clip_note": clip_note_raw,
+                "color": clip_color,
                 "has_clip_note": bool(clip_note_id),
                 "has_marker": bool(marker_id),
             }
@@ -1401,9 +1432,21 @@ def aaf_to_json(aaf_file: str) -> dict:
             if marker_id:
                 status.append('marker')
             status_str = f' [existing: {", ".join(status)}]' if status else ''
-            print(f"  Event {event_num}: {clip_name} -> {vfx_id}  [{rec_start_tc} - {rec_end_tc}]{status_str}")
+            event_lines.append(f"  Event {event_num}: {clip_name} -> {vfx_id}  [{rec_start_tc} - {rec_end_tc}]{status_str}")
             timeline_pos += length
 
+    # If SOME clips have existing IDs and others don't, it's an error — don't auto-generate
+    events_with_id    = [e for e in edl_data['events'] if e['has_clip_note'] or e['has_marker']]
+    events_without_id = [e for e in edl_data['events'] if not e['has_clip_note'] and not e['has_marker']]
+    if events_with_id and events_without_id:
+        print(f"Error: AAF has VFX IDs on some clips but {len(events_without_id)} clip(s) are missing both marker and clip note:", file=sys.stderr)
+        for e in events_without_id:
+            print(f"  [{e['record_start_TC']}]  {e['FROM']}", file=sys.stderr)
+        print("Resolve the missing VFX IDs in Avid before re-running.", file=sys.stderr)
+        sys.exit(1)
+
+    for line in event_lines:
+        print(line)
     print(f"\nFound {event_num} clips in AAF timeline.")
     return edl_data
 
@@ -1416,9 +1459,10 @@ def export_final_vfx_edl(json_file_path: str, final_vfx_bin: str, edl_final_file
     with open(json_file_path) as input_file:    # Open JSON file
         json_file = json.load(input_file)   # Load JSON file
     
-    if os.path.exists(edl_final_file_path): os.remove(edl_final_file_path)  # Remove file if it exists
+    if not confirm_overwrite(edl_final_file_path):
+        return
     try:
-        with open(edl_final_file_path, 'a') as output_file:   # Open EDL file
+        with open(edl_final_file_path, 'w') as output_file:   # Open EDL file
             heading = 'TITLE: ' + os.path.splitext(os.path.basename(edl_final_file_path))[0]+ '\n'\
             'FCM: NON-DROP FRAME\n'    # Define EDL heading
             output_file.write(heading)  # Write heading to EDL file
@@ -1457,8 +1501,8 @@ def main():
     parser = argparse.ArgumentParser(description='Import EDL, create project and export various stuff for AVID')
 
     parser.add_argument('-i', '--init', action='store_true', help='Initialize project settings (Project ID, FPS, resolution, handles)')
-    parser.add_argument('-e', '--edl', metavar='EDL', help='Import an EDL and create a project file')
-    parser.add_argument('-a', '--aaf_read', metavar='AAF', help='Import an AAF timeline, create project and export a new AAF with VFX ID clip notes')
+    parser.add_argument('-e', '--edl', metavar='FILE', help='Import an EDL or AAF and create a project file')
+    parser.add_argument('-a', '--aaf_write', action='store_true', help='Export a new AAF with VFX ID clip notes (requires project imported from AAF via -e)')
     parser.add_argument('-m', '--markers', action='store_true', help='Export markers and subcaps for AVID (interactive options)')
     parser.add_argument('-s', '--subcaps', action='store_true', help='Export subcaps file for AVID')
     parser.add_argument('-p', '--pulls', action='store_true', help='Export ALE and EDL files for creating pulls in AVID bin')
@@ -1506,20 +1550,25 @@ def main():
         fps_val    = old_config.get('fps', DEFAULT_CONFIG['fps'])
         ProjectID  = project_id
         fps        = fps_val
-        edl_data = edl_to_json(args.edl)
-        edl_dir = os.path.dirname(os.path.abspath(args.edl))
+        input_file = args.edl
+        input_dir  = os.path.dirname(os.path.abspath(input_file))
+        if os.path.splitext(input_file)[1].lower() == '.aaf':
+            check_aaf_project_settings(input_file, old_config)
+            file_data = aaf_to_json(input_file)
+        else:
+            file_data = edl_to_json(input_file)
         project = {
             'config': {
-                'edl_file': os.path.basename(args.edl),
-                'edl_dir': edl_dir,
+                'edl_file': os.path.basename(input_file),
+                'edl_dir': input_dir,
                 'ProjectID': project_id,
                 'fps': fps_val,
                 'resolution': old_config.get('resolution', DEFAULT_CONFIG['resolution']),
                 'handles': old_config.get('handles', DEFAULT_CONFIG['handles']),
                 'markers': old_config.get('markers', DEFAULT_CONFIG['markers']),
             },
-            'edl_metadata': edl_data['edl_metadata'],
-            'events': edl_data['events'],
+            'edl_metadata': file_data['edl_metadata'],
+            'events': file_data['events'],
         }
         save_project(project)
         print("Project saved.")
@@ -1600,42 +1649,24 @@ def main():
         export_changelist_markers(events, fps_val, output_path, user, track, color)
         tab_path = os.path.join(new_dir, new_stem + '_changelist_TAB.txt')
         export_changelist_tab(events, fps_val, handles_val, tab_path)
-    elif args.aaf_read:
-        check_aaf_consistency(args.aaf_read)
-        if os.path.exists(PROJECT_FILE):
-            with open(PROJECT_FILE) as f:
-                old_config = json.load(f).get('config', DEFAULT_CONFIG)
-        else:
-            old_config = DEFAULT_CONFIG.copy()
-        check_aaf_project_settings(args.aaf_read, old_config)
-        project_id = old_config.get('ProjectID', DEFAULT_CONFIG['ProjectID'])
-        fps_val    = old_config.get('fps', DEFAULT_CONFIG['fps'])
-        ProjectID  = project_id
-        fps        = fps_val
-        aaf_file = args.aaf_read
-        aaf_dir = os.path.dirname(os.path.abspath(aaf_file))
-        aaf_stem = os.path.splitext(os.path.basename(aaf_file))[0]
-        aaf_data = aaf_to_json(aaf_file)
-        project = {
-            'config': {
-                'edl_file': os.path.basename(aaf_file),
-                'edl_dir': aaf_dir,
-                'ProjectID': project_id,
-                'fps': fps_val,
-                'resolution': old_config.get('resolution', DEFAULT_CONFIG['resolution']),
-                'handles': old_config.get('handles', DEFAULT_CONFIG['handles']),
-                'markers': old_config.get('markers', DEFAULT_CONFIG['markers']),
-            },
-            'edl_metadata': aaf_data['edl_metadata'],
-            'events': aaf_data['events'],
-        }
-        save_project(project)
-        print("Project saved.")
+    elif args.aaf_write:
+        project = load_project()
+        aaf_file = os.path.join(project['config']['edl_dir'], project['config']['edl_file'])
+        if not aaf_file.lower().endswith('.aaf'):
+            print("Error: project was not imported from an AAF. Run -e with an AAF file first.", file=sys.stderr)
+            sys.exit(1)
+        check_aaf_consistency(aaf_file)
         user, color, position, clip_color = prompt_aaf_options(project['config'])
         project['config']['markers'] = {'user': user, 'color': color, 'position': position, 'clip_color': clip_color}
         save_project(project)
-        output_aaf = os.path.join(aaf_dir, aaf_stem + '_new.aaf')
+        aaf_stem = os.path.splitext(project['config']['edl_file'])[0]
+        output_aaf = os.path.join(project['config']['edl_dir'], aaf_stem + '_new.aaf')
         json_to_aaf(PROJECT_FILE, aaf_file, output_aaf, user, color, position, clip_color)
+        for event in project['events']:
+            vfx_id  = event['VFX ID']
+            job_desc = event.get('job_description', '')
+            event['clip_note'] = f"{vfx_id} {job_desc}".strip() if job_desc else vfx_id
+        save_project(project)
 
 
 if __name__ == "__main__":
