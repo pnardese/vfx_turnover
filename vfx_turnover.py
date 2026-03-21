@@ -258,11 +258,12 @@ def prompt_choice(prompt: str, choices: list, default: str) -> str:
 
 def prompt_markers_options(config) -> tuple:
     """Interactive prompts for markers export options."""
-    m = config.get('markers', DEFAULT_CONFIG['markers'])
-    user = input(f"\nAVID user name [default: {m['user']}]: ").strip() or m['user']
-    track = prompt_choice("Track:", MARKER_TRACKS, m['track'])
-    color = prompt_choice("Marker color:", MARKER_COLORS, m['color'])
-    position = prompt_choice("Marker position:", MARKER_POSITIONS, m['position'])
+    dm = DEFAULT_CONFIG['markers']
+    m  = config.get('markers', {})
+    user     = input(f"\nAVID user name [default: {m.get('user', dm['user'])}]: ").strip() or m.get('user', dm['user'])
+    track    = prompt_choice("Track:",           MARKER_TRACKS,    m.get('track',    dm['track']))
+    color    = prompt_choice("Marker color:",    MARKER_COLORS,    m.get('color',    dm['color']))
+    position = prompt_choice("Marker position:", MARKER_POSITIONS, m.get('position', dm['position']))
     print()
     return user, track, color, position
 
@@ -323,11 +324,12 @@ def prompt_clip_color(default: str) -> str:
 
 def prompt_aaf_options(config) -> tuple:
     """Interactive prompts for AAF clip notes export options (marker + clip color)."""
-    m = config.get('markers', DEFAULT_CONFIG['markers'])
-    user = input(f"\nAVID user name [default: {m['user']}]: ").strip() or m['user']
-    color = prompt_choice("Marker color:", MARKER_COLORS, m['color'])
-    position = prompt_choice("Marker position:", MARKER_POSITIONS, m['position'])
-    clip_color = prompt_clip_color(m.get('clip_color', 'none'))
+    dm = DEFAULT_CONFIG['markers']
+    m  = config.get('markers', {})
+    user       = input(f"\nAVID user name [default: {m.get('user', dm['user'])}]: ").strip() or m.get('user', dm['user'])
+    color      = prompt_choice("Marker color:",    MARKER_COLORS,    m.get('color',      dm['color']))
+    position   = prompt_choice("Marker position:", MARKER_POSITIONS, m.get('position',   dm['position']))
+    clip_color = prompt_clip_color(m.get('clip_color', dm['clip_color']))
     print()
     return user, color, position, clip_color
 
