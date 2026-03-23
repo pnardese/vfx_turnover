@@ -55,7 +55,7 @@ The `-e` command accepts both EDL and AAF files and saves the project data to th
 
 Create an EDL (File_129 or CMX3600) from the Avid video track containing only shots planned for VFX, simplify timeline by removing transitions, effects and committing groups. In List Options in Avid, check: **Clip Names**, **Source File Name**, and **Markers**.
 
-VFX IDs are generated automatically based on scene numbers: `ProjectID_Scene_num`, where `num` is a 4-digit progressive number like `0010`, `0020`, `0030`, etc. Auto-generation only happens when the EDL has **no markers at all**. If the EDL has markers but some events are missing a VFX ID, the script stops with an error listing the affected events.
+VFX IDs are generated automatically based on scene numbers: `ProjectID_Scene_num`, where `num` is a 4-digit progressive number like `0010`, `0020`, `0030`, etc. Auto-generation only happens when the EDL has **no markers at all**. If the EDL has markers but some events are missing a VFX ID, the script loads the project with a warning — missing IDs are left empty in the project JSON.
 
 Existing markers on the timeline are imported as existing VFX IDs (found in the EDL as `*LOC` lines). If you add VFX shots in Avid, add markers with their new VFX IDs before re-importing.
 
@@ -82,7 +82,7 @@ The project file is created using the settings from `-i`. The script warns if th
 **VFX ID handling** for AAF import:
 
 - **No markers and no clip notes** → VFX IDs are auto-generated from scene numbers (`ProjectID_Scene_num`, 4-digit counter)
-- **Some clips missing both marker and clip note** → script stops with an error listing the affected clips and timecodes; resolve in Avid before re-running
+- **Some clips missing both marker and clip note** → script loads with a warning listing the affected clips and timecodes; missing IDs are left empty in the project JSON
 - **Clip has marker only, or clip note only** → that ID is used; the other source is ignored
 - **Job descriptions** in clip notes or markers (e.g. `GDN_033_0010 - REMOVE BACKGROUND`) are stripped from the VFX ID but preserved and written back to both clip note and marker when exporting
 - **Clip has both marker and clip note with different values** → script stops with a mismatch error (checked at export time via `-a`):
@@ -257,6 +257,7 @@ This repository includes a [Claude Code](https://claude.ai/claude-code) skill at
 | `/vfx-pulls` | Export ALE and Pulls EDL |
 | `/vfx-tab` | Export TAB spreadsheet file |
 | `/vfx-ids` | List all VFX IDs with tape names |
+| `/vfx-rename OLD NEW` | Rename VFX IDs using a before/after example (applies pattern to all IDs) |
 | `/vfx-status` | Show loaded project summary |
 
 ---
