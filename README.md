@@ -256,7 +256,7 @@ This repository includes a [Claude Code](https://claude.ai/claude-code) skill at
 | `/vfx-markers` | Export markers and subcaps (saved defaults) |
 | `/vfx-pulls` | Export ALE and Pulls EDL |
 | `/vfx-tab` | Export TAB spreadsheet file |
-| `/vfx-ids` | List all VFX IDs with tape names |
+| `/vfx-ids` | List all VFX IDs with job description, tape, source in/out, and record in/out |
 | `/vfx-rename OLD NEW` | Rename VFX IDs using a before/after example (applies pattern to all IDs) |
 | `/vfx-status` | Show loaded project summary |
 
