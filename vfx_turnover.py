@@ -162,13 +162,13 @@ def edl_to_json(edl_file: str):
             event["VFX ID"] = create_string("_", ProjectID, scene_clip, str(VFX_counter).rjust(4, "0"))
             last_scene = scene_clip
     else:
-        # EDL has LOC markers — stop if any event is missing one
+        # EDL has LOC markers — warn about any event missing one, leave VFX ID empty
         missing = [e for e in edl_data['events'] if not e.get('LOC')]
         if missing:
-            print(f"Error: EDL has markers but {len(missing)} event(s) are missing a VFX ID:", file=sys.stderr)
+            print(f"Warning: EDL has markers but {len(missing)} event(s) are missing a VFX ID:", file=sys.stderr)
             for e in missing:
                 print(f"  Event {e['event_number']} ({e.get('reel', '')})", file=sys.stderr)
-            sys.exit(1)
+            print("Missing VFX IDs will be empty in the project.", file=sys.stderr)
 
     return edl_data
 
@@ -1437,15 +1437,16 @@ def aaf_to_json(aaf_file: str) -> dict:
             event_lines.append(f"  Event {event_num}: {clip_name} -> {vfx_id}  [{rec_start_tc} - {rec_end_tc}]{status_str}")
             timeline_pos += length
 
-    # If SOME clips have existing IDs and others don't, it's an error — don't auto-generate
+    # If SOME clips have existing IDs and others don't, warn but still load with empty VFX ID
     events_with_id    = [e for e in edl_data['events'] if e['has_clip_note'] or e['has_marker']]
     events_without_id = [e for e in edl_data['events'] if not e['has_clip_note'] and not e['has_marker']]
     if events_with_id and events_without_id:
-        print(f"Error: AAF has VFX IDs on some clips but {len(events_without_id)} clip(s) are missing both marker and clip note:", file=sys.stderr)
+        print(f"Warning: AAF has VFX IDs on some clips but {len(events_without_id)} clip(s) are missing both marker and clip note:", file=sys.stderr)
         for e in events_without_id:
             print(f"  [{e['record_start_TC']}]  {e['FROM']}", file=sys.stderr)
-        print("Resolve the missing VFX IDs in Avid before re-running.", file=sys.stderr)
-        sys.exit(1)
+        print("Missing VFX IDs will be empty in the project.", file=sys.stderr)
+        for e in events_without_id:
+            e['VFX ID'] = ''
 
     for line in event_lines:
         print(line)
