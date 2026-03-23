@@ -246,6 +246,21 @@ All exported files are saved in the same folder as the original EDL or AAF. If a
 
 ---
 
+## Claude Code Skill
+
+This repository includes a [Claude Code](https://claude.ai/claude-code) skill at `.claude/skills/vfx-turnover/`. When working in this project, the following slash commands are available:
+
+| Command | Description |
+|---------|-------------|
+| `/vfx-turnover` | Reference for the tool's CLI, project JSON structure, and AAF workflow |
+| `/vfx-markers` | Export markers and subcaps (saved defaults) |
+| `/vfx-pulls` | Export ALE and Pulls EDL |
+| `/vfx-tab` | Export TAB spreadsheet file |
+| `/vfx-ids` | List all VFX IDs with tape names |
+| `/vfx-status` | Show loaded project summary |
+
+---
+
 ## Settings
 
 Initialized with `-i` and persisted at `~/.config/vfx_turnover/vfx_project.json`.
