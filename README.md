@@ -123,13 +123,13 @@ The output AAF is saved next to the source AAF with `_new` appended (e.g. `seque
 
 ### 3. Export Markers and Subcaps
 
-Export markers and subcaps and import them into Avid to help keep track of VFX shots.
+Export a markers file and import it into Avid to help keep track of VFX shots.
 
 ```
 vfx-turnover -m
 ```
 
-Both a markers file and a subcaps file are exported in one step. The script prompts for:
+The script prompts for:
 
 | Option | Choices | Default |
 |--------|---------|---------|
@@ -249,7 +249,7 @@ vfx-turnover -f avid_bin.txt
 | `-i` | Initialize project settings (Project ID, FPS, resolution, handles) |
 | `-e FILE` | Import an EDL or AAF and create/update the project file |
 | `-a` | Export a new AAF with VFX ID clip notes, markers and clip color (requires project imported from AAF via `-e`) |
-| `-m` | Export markers and subcaps for Avid (interactive options) |
+| `-m` | Export markers file for Avid (interactive options) |
 | `-s` | Export subcaps file for Avid |
 | `-p` | Export ALE and Pulls EDL for creating pulls in Avid bin |
 | `-t` | Export a TAB-delimited text file for spreadsheet import |

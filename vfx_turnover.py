@@ -1643,7 +1643,7 @@ def main():
     parser.add_argument('-i', '--init', action='store_true', help='Initialize project settings (Project ID, FPS, resolution, handles)')
     parser.add_argument('-e', '--edl', metavar='FILE', help='Import an EDL or AAF and create a project file')
     parser.add_argument('-a', '--aaf_write', action='store_true', help='Export a new AAF with VFX ID clip notes (requires project imported from AAF via -e)')
-    parser.add_argument('-m', '--markers', action='store_true', help='Export markers and subcaps for AVID (interactive options)')
+    parser.add_argument('-m', '--markers', action='store_true', help='Export markers file for AVID (interactive options)')
     parser.add_argument('-s', '--subcaps', action='store_true', help='Export subcaps file for AVID')
     parser.add_argument('-p', '--pulls', action='store_true', help='Export ALE and EDL files for creating pulls in AVID bin')
     parser.add_argument('-t', '--tab', nargs='?', const=True, metavar='ALE', help='Export TAB spreadsheet. Optionally pass an ALE file to merge ALE columns.')
@@ -1721,7 +1721,6 @@ def main():
         save_project(project)
         print("\nExported:")
         json_to_markers(PROJECT_FILE, os.path.join(edl_dir, edl_stem + '_markers.txt'), user, track, color, position)
-        json_to_subcaps(PROJECT_FILE, os.path.join(edl_dir, edl_stem + '_subcaps.txt'))
     elif args.subcaps:
         project = load_project()
         edl_dir = project['config']['edl_dir']

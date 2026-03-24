@@ -34,7 +34,7 @@ Dependencies (from `requirements.txt`): `aaf2`, `timecode`, `pandas`.
 | `-i` | `--init` | Initialize project settings (ProjectID, fps, resolution, handles). Prompts interactively, preserves existing config values as defaults. |
 | `-e FILE` | `--edl` | Import an EDL or AAF file. Detects by extension (`.aaf` → `aaf_to_json`; otherwise → `edl_to_json`). Creates/overwrites project JSON. |
 | `-a` | `--aaf_write` | Export a new AAF with VFX IDs as clip notes, markers, and clip color. Requires project imported from an AAF via `-e`. Runs consistency check first. |
-| `-m` | `--markers` | Export markers and subcaps files for Avid. Prompts for user, track, color, position. |
+| `-m` | `--markers` | Export markers file for Avid. Prompts for user, track, color, position. |
 | `-s` | `--subcaps` | Export only the subcaps file (no prompts). |
 | `-p` | `--pulls` | Export ALE and Pulls EDL for creating pull subclips in Avid. |
 | `-t [ALE]` | `--tab` | Export TAB-delimited spreadsheet file. Optional ALE path merges ALE clip metadata into the output (matched by `Tape`). |
@@ -120,7 +120,7 @@ All outputs are saved in `project['config']['edl_dir']`, named from `edl_stem` (
 
 | Flag | Output file(s) |
 |------|---------------|
-| `-m` | `<stem>_markers.txt`, `<stem>_subcaps.txt` |
+| `-m` | `<stem>_markers.txt` |
 | `-s` | `<stem>_subcaps.txt` |
 | `-p` | `<stem>.ALE`, `<stem>_pulls.edl` |
 | `-t` | `<stem>_TAB.txt` |
