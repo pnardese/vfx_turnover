@@ -53,6 +53,9 @@ def load_project():
     entry = get_active_entry(project)
     if entry:
         print(f"EDL: {entry['edl_file']}")
+        src_path = os.path.join(entry['edl_dir'], entry['edl_file'])
+        if not os.path.exists(src_path):
+            print(f"  Warning: source file not found at {entry['edl_dir']} — it may have been moved.")
     else:
         print("No EDL loaded. Use -e to import an EDL or AAF.")
     return project
@@ -1887,6 +1890,9 @@ def main():
         aaf_file = os.path.join(entry['edl_dir'], entry['edl_file'])
         if not aaf_file.lower().endswith('.aaf'):
             print("Error: project was not imported from an AAF. Run -e with an AAF file first.", file=sys.stderr)
+            sys.exit(1)
+        if not os.path.exists(aaf_file):
+            print(f"Error: AAF file not found at {aaf_file} — it may have been moved. Update the library with -e.", file=sys.stderr)
             sys.exit(1)
         check_aaf_consistency(aaf_file)
         user, color, position, clip_color = prompt_aaf_options(project['config'])
