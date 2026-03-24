@@ -265,6 +265,18 @@ All exported files are saved in the same folder as the original EDL or AAF. If a
 
 This repository includes a [Claude Code](https://claude.ai/claude-code) skill at `.claude/skills/vfx-turnover/`. When working in this project, the following slash commands are available:
 
+To make the skills and commands available system-wide (in any Claude Code session, not just this project), copy or symlink them to your global `~/.claude/` folder:
+
+```bash
+# Skills (reference + slash command implementations)
+cp -r .claude/skills/vfx-turnover ~/.claude/skills/
+
+# Slash commands
+for f in .claude/commands/vfx-*.md; do
+  ln -sf "$(pwd)/$f" ~/.claude/commands/
+done
+```
+
 | Command | Description |
 |---------|-------------|
 | `/vfx-turnover` | Reference for the tool's CLI, project JSON structure, and AAF workflow |
