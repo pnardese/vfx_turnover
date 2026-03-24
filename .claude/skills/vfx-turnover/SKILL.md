@@ -15,8 +15,9 @@ Project settings are saved at `~/.config/vfx_turnover/vfx_project.json` and reus
 
 | Flag | What it does |
 |------|-------------|
-| `-i` | Set up project: Project ID, FPS, resolution, handle frames. Run once at project start; settings persist. |
-| `-e FILE` | Import an EDL or AAF — creates the project shot list. Accepts `.edl` or `.aaf`. |
+| `-i` | Set up project: Project ID, FPS, resolution, handle frames. **Clears all existing project data** — run once at project start. |
+| `-e FILE` | Import an EDL or AAF into the library and set it as the active timeline. Upserts by filename. |
+| `-e` | Interactive library manager — list entries, set active, remove, clear. |
 | `-m` | Export Avid markers file. Prompts for user name, track, color, and position. |
 | `-s` | Export subcaps file (no prompts, uses saved settings). |
 | `-p` | Export ALE + Pulls EDL for creating pull subclips in Avid. |
@@ -30,15 +31,36 @@ Project settings are saved at `~/.config/vfx_turnover/vfx_project.json` and reus
 
 ## Typical Workflow
 
-1. **`-i`** — initialize project settings
-2. **`-e timeline.edl`** — import the VFX EDL (or AAF)
-3. **`-m`** — export markers → import into Avid to mark VFX shots on timeline
-4. **`-s`** — export subcaps → import into Avid as subtitles
-5. **`-p`** — export ALE + Pulls EDL → create pull subclips in Avid bin
-6. **`-t`** — export TAB → import into spreadsheet/database
-7. **`-a`** — (AAF workflow only) write VFX IDs back to AAF as clip notes
+1. **`-i`** — initialize project settings (clears existing project)
+2. **`-e timeline.edl`** — import the VFX EDL or AAF into the library (set as active)
+3. **`-e`** — (optional) manage library: switch active entry, remove, clear
+4. **`-m`** — export markers → import into Avid to mark VFX shots on timeline
+5. **`-s`** — export subcaps → import into Avid as subtitles
+6. **`-p`** — export ALE + Pulls EDL → create pull subclips in Avid bin
+7. **`-t`** — export TAB → import into spreadsheet/database
+8. **`-a`** — (AAF workflow only) write VFX IDs back to AAF as clip notes
 
 ---
+
+## EDL/AAF Library
+
+The project stores a **library** of imported EDL/AAF files. One entry is always the active timeline — all exports operate on it.
+
+- **`-e FILE`** — adds or updates the entry in the library, sets it as active immediately
+- **`-e`** (no arg) — interactive manager: shows numbered list with `*` on the active entry; options L/R/C/Q
+
+Project JSON structure:
+```json
+{
+  "config": { "active": "timeline.edl", "ProjectID": "GDN", "fps": "24", ... },
+  "library": [
+    { "edl_file": "timeline.edl", "edl_dir": "/path", "edl_metadata": {}, "events": [...] },
+    { "edl_file": "timeline_v2.edl", "edl_dir": "/path", "edl_metadata": {}, "events": [...] }
+  ]
+}
+```
+
+`get_active_entry(project)` returns the active library entry dict (matched by `config.active`, fallback to first, fallback to `{}`).
 
 ## VFX ID Format
 

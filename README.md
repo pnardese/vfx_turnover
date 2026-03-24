@@ -30,7 +30,7 @@ pipx reinstall vfx-turnover
 
 ### 1. Initialize Project
 
-Before importing any EDL or AAF, initialize the project with your settings:
+Run once at the start of a new project. **This clears any existing project data** — library, shot list, and settings are all reset.
 
 ```
 vfx-turnover -i
@@ -49,7 +49,29 @@ Settings are saved to `~/.config/vfx_turnover/vfx_project.json` and reused by al
 
 ### 2. Import EDL or AAF
 
-The `-e` command accepts both EDL and AAF files and saves the project data to the project JSON.
+The `-e FILE` command imports an EDL or AAF into the project library and sets it as the active timeline. You can import multiple EDL/AAF files — each is stored as a separate entry in the library. All exports always operate on the active entry.
+
+If you re-import a file with the same filename, the existing library entry is updated in place.
+
+#### Manage the library
+
+Run `-e` without an argument to open the interactive library manager:
+
+```
+vfx-turnover -e
+```
+
+```
+Library (2 entries):
+  * 1  timeline_v2.edl     48 shots   /path/to/edls
+    2  timeline_v1.edl     45 shots   /path/to/edls
+
+[L] Load (set active)   [R] Remove   [C] Clear all   [Q] Quit
+```
+
+The entry marked `*` is the currently active timeline. Use **L** to switch the active entry, **R** to remove one, **C** to clear all.
+
+#### Import from EDL
 
 **Import from EDL**
 
@@ -246,8 +268,9 @@ vfx-turnover -f avid_bin.txt
 
 | Option | Description |
 |--------|-------------|
-| `-i` | Initialize project settings (Project ID, FPS, resolution, handles) |
-| `-e FILE` | Import an EDL or AAF and create/update the project file |
+| `-i` | Initialize project settings — **clears all existing project data** |
+| `-e FILE` | Import an EDL or AAF into the library and set it as active |
+| `-e` | Open interactive library manager (load active, remove, clear) |
 | `-a` | Export a new AAF with VFX ID clip notes, markers and clip color (requires project imported from AAF via `-e`) |
 | `-m` | Export markers file for Avid (interactive options) |
 | `-s` | Export subcaps file for Avid |
