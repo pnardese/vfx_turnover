@@ -175,6 +175,20 @@ The exported file contains one row per shot with the following columns:
 | `Pull Handles` | Handle frames configured for the project |
 | `Tape` | Source reel / tape name |
 
+#### Merge with ALE
+
+Pass an Avid ALE file as argument to merge the ALE clip metadata into the TAB export:
+
+```
+vfx-turnover -t dailies.ALE
+```
+
+Each project event is matched to the ALE by reel name (`Tape` column). The output file gets all standard TAB columns plus every additional column found in the ALE (e.g. `Color`, `Creation Date`, `Camera`, `Video`, `Camroll`). Columns already present in the standard TAB (`Name`, `Start`, `End`, `Tape`, `Duration`) are skipped; the ALE `Comments` column is renamed to `ALE Comments` to avoid collision with the TAB `Comments` column.
+
+The output file is saved in the same folder as the EDL, named `<edl_stem>_<ale_stem>_merge.txt`.
+
+The script validates that the ALE FPS matches the project FPS (mismatch aborts) and warns if the `VIDEO_FORMAT` differs from the project resolution. A match summary is printed after export.
+
 ### 6. Export ALE Pulls and Pulls EDL
 
 Export an ALE to create pull subclips and a Pulls EDL to cut them into a timeline — both exported in one step using the handle frames set in `-i`.
@@ -239,6 +253,7 @@ vfx-turnover -f avid_bin.txt
 | `-s` | Export subcaps file for Avid |
 | `-p` | Export ALE and Pulls EDL for creating pulls in Avid bin |
 | `-t` | Export a TAB-delimited text file for spreadsheet import |
+| `-t dailies.ALE` | Export TAB file merged with ALE clip metadata (matched by reel name) |
 | `-f avid_bin.txt` | Export an EDL to cut in final VFX shots (requires Avid bin TAB) |
 | `-c new.edl` | Compare new EDL against loaded project and export changelist markers and TAB files |
 
@@ -256,6 +271,7 @@ This repository includes a [Claude Code](https://claude.ai/claude-code) skill at
 | `/vfx-markers` | Export markers and subcaps (saved defaults) |
 | `/vfx-pulls` | Export ALE and Pulls EDL |
 | `/vfx-tab` | Export TAB spreadsheet file |
+| `/vfx-merge ALE` | Merge an ALE file with project VFX IDs and export an enhanced TAB file |
 | `/vfx-ids` | List all VFX IDs with job description, tape, source in/out, and record in/out |
 | `/vfx-rename OLD NEW` | Rename VFX IDs using a before/after example (applies pattern to all IDs) |
 | `/vfx-status` | Show loaded project summary |

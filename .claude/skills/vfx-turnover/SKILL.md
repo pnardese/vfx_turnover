@@ -37,7 +37,7 @@ Dependencies (from `requirements.txt`): `aaf2`, `timecode`, `pandas`.
 | `-m` | `--markers` | Export markers and subcaps files for Avid. Prompts for user, track, color, position. |
 | `-s` | `--subcaps` | Export only the subcaps file (no prompts). |
 | `-p` | `--pulls` | Export ALE and Pulls EDL for creating pull subclips in Avid. |
-| `-t` | `--tab` | Export TAB-delimited spreadsheet file. |
+| `-t [ALE]` | `--tab` | Export TAB-delimited spreadsheet file. Optional ALE path merges ALE clip metadata into the output (matched by `Tape`). |
 | `-f BIN` | `--final` | Export EDL for cutting final VFX into Avid. Requires an Avid bin TAB file as argument. |
 | `-c NEW_EDL` | `--compare` | Compare a new EDL against the loaded project and export changelist markers + TAB files. |
 
@@ -124,6 +124,7 @@ All outputs are saved in `project['config']['edl_dir']`, named from `edl_stem` (
 | `-s` | `<stem>_subcaps.txt` |
 | `-p` | `<stem>.ALE`, `<stem>_pulls.edl` |
 | `-t` | `<stem>_TAB.txt` |
+| `-t ALE` | `<stem>_<ale_stem>_merge.txt` |
 | `-f` | `<stem>_vfx_final.edl` |
 | `-c` | next to the NEW edl: `<new_stem>_changelist_markers.txt`, `<new_stem>_changelist_TAB.txt` |
 | `-a` | next to source AAF: `<stem>_new.aaf` |
@@ -157,6 +158,23 @@ Source TCs are expanded by `handles` frames on both sides.
 ## TAB File Columns
 
 `#`, `Name`, `Thumbnail`(empty), `Comments`(job_description), `Status`(empty), `Date`(empty), `Duration`, `Start`, `End`, `Frame Count Duration`, `Handles`, `Tape`
+
+## ALE Merge (`-t ALE` → `merge_ale_tab`)
+
+Merges an Avid ALE file with the loaded project events, exporting an enhanced TAB file.
+
+**Matching**: `event['reel']` == ALE `Tape` column (both carry `_001` suffix — matched directly).
+
+**Validation**:
+- ALE `FPS` != project `fps` → error + abort
+- ALE `VIDEO_FORMAT` != project `resolution` → warning only
+- Missing `Tape` column → error + abort
+
+**Output columns**: standard TAB columns + all ALE columns except `Name`, `Start`, `End`, `Tape`, `Duration` (already present). ALE `Comments` renamed to `ALE Comments`.
+
+**Output file**: `<edl_stem>_<ale_stem>_merge.txt` in `edl_dir`.
+
+**Functions**: `parse_ale(ale_file_path) -> dict` returns `{heading, columns, rows}`; `merge_ale_tab(json_file_path, ale_file_path, output_path)`.
 
 ## Changelist (`-c`)
 

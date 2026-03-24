@@ -504,6 +504,143 @@ def export_google_tab(json_file_path: str, google_file_path: str):
         print(f"Error writing {google_file_path}: {e}")  # Print error message
 
 
+def parse_ale(ale_file_path: str) -> dict:
+    """Parse an Avid ALE file into heading, columns, and rows."""
+    with open(ale_file_path, 'r') as f:
+        lines = [l.rstrip('\n\r') for l in f.readlines()]
+
+    heading = {}
+    columns = []
+    rows = []
+    section = None
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped == 'Heading':
+            section = 'heading'
+            continue
+        elif stripped == 'Column':
+            section = 'column'
+            continue
+        elif stripped == 'Data':
+            section = 'data'
+            continue
+
+        if section == 'heading':
+            if '\t' in line:
+                key, _, value = line.partition('\t')
+                heading[key.strip()] = value.strip()
+        elif section == 'column':
+            if stripped:
+                columns = line.split('\t')
+        elif section == 'data':
+            if stripped:
+                values = line.split('\t')
+                while len(values) < len(columns):
+                    values.append('')
+                rows.append(dict(zip(columns, values)))
+
+    return {'heading': heading, 'columns': columns, 'rows': rows}
+
+
+def merge_ale_tab(json_file_path: str, ale_file_path: str, output_path: str):
+    """Export a TAB file merging project VFX IDs with ALE metadata columns."""
+    with open(json_file_path) as f:
+        project = json.load(f)
+
+    ale = parse_ale(ale_file_path)
+    ale_fps = ale['heading'].get('FPS', '')
+    ale_res = ale['heading'].get('VIDEO_FORMAT', '')
+
+    print(f"  ALE: {os.path.basename(ale_file_path)}  FPS: {ale_fps}  Format: {ale_res}  Clips: {len(ale['rows'])}")
+
+    if ale_fps != fps:
+        print(f"Error: ALE FPS ({ale_fps}) does not match project FPS ({fps}). Aborting.", file=sys.stderr)
+        return
+
+    resolution = project['config'].get('resolution', DEFAULT_CONFIG['resolution'])
+    if ale_res != resolution:
+        print(f"  Warning: ALE VIDEO_FORMAT ({ale_res}) does not match project resolution ({resolution})")
+
+    if 'Tape' not in ale['columns']:
+        print("Error: ALE file missing required 'Tape' column. Aborting.", file=sys.stderr)
+        return
+
+    # Build lookup index: Tape -> row
+    ale_index = {}
+    for row in ale['rows']:
+        key = row.get('Tape', '')
+        if key in ale_index:
+            print(f"  Warning: duplicate ALE entry for Tape={key}, keeping first")
+        else:
+            ale_index[key] = row
+
+    # Extra ALE columns: all except those already present in standard TAB
+    SKIP_ALE_COLS = {'Name', 'Start', 'End', 'Tape', 'Duration'}
+    extra_cols = [c for c in ale['columns'] if c not in SKIP_ALE_COLS]
+
+    def col_header(c):
+        return 'ALE Comments' if c == 'Comments' else c
+
+    if not confirm_overwrite(output_path):
+        return
+
+    matched = 0
+    unmatched = 0
+
+    try:
+        with open(output_path, 'w') as out:
+            std_header = '#\tName\tThumbnail\tComments\tStatus\tDate\tDuration\tStart\tEnd\tFrame Count Duration\tHandles\tTape'
+            ale_header = '\t'.join(col_header(c) for c in extra_cols)
+            out.write(std_header + ('\t' + ale_header if ale_header else '') + '\n')
+
+            counter = 1
+            for event in project['events']:
+                start_TC = Timecode(fps, event['source_start_TC'])
+                end_TC   = Timecode(fps, event['source_end_TC'])
+                duration = end_TC - start_TC
+
+                std_values = create_string(
+                    '\t',
+                    str(counter),
+                    event['VFX ID'],
+                    '',
+                    event.get('job_description', ''),
+                    '',
+                    '',
+                    str(duration),
+                    event['source_start_TC'],
+                    event['source_end_TC'],
+                    str(duration.frames),
+                    str(handles),
+                    event['reel'],
+                )
+
+                ale_row = ale_index.get(event['reel'])
+                if ale_row:
+                    matched += 1
+                    ale_values = '\t'.join(ale_row.get(c, '') for c in extra_cols)
+                else:
+                    unmatched += 1
+                    print(f"  Warning: no ALE match for {event['VFX ID']} (reel: {event['reel']})")
+                    ale_values = '\t' * (len(extra_cols) - 1) if extra_cols else ''
+
+                out.write(std_values + ('\t' + ale_values if extra_cols else '') + '\n')
+                counter += 1
+
+        print(f"  Merged TAB: {os.path.basename(output_path)}")
+        print(f"  Matched:    {matched} / {matched + unmatched} events")
+        if unmatched:
+            print(f"  Unmatched:  {unmatched} events (no ALE row — ALE columns left empty)")
+        used_keys = {e['reel'] for e in project['events']}
+        unused = sum(1 for k in ale_index if k not in used_keys)
+        if unused:
+            print(f"  ALE rows not used: {unused}")
+
+    except Exception as e:
+        print(f"Error writing {output_path}: {e}")
+
+
 def compare_edls(old_events: list, new_events: list, fps_val: str, handles_val: int) -> list:
     """Compare two EDL event lists and return annotated changelist.
 
@@ -1509,7 +1646,7 @@ def main():
     parser.add_argument('-m', '--markers', action='store_true', help='Export markers and subcaps for AVID (interactive options)')
     parser.add_argument('-s', '--subcaps', action='store_true', help='Export subcaps file for AVID')
     parser.add_argument('-p', '--pulls', action='store_true', help='Export ALE and EDL files for creating pulls in AVID bin')
-    parser.add_argument('-t', '--tab', action='store_true', help='Export TAB file to import into a Spreadsheet')
+    parser.add_argument('-t', '--tab', nargs='?', const=True, metavar='ALE', help='Export TAB spreadsheet. Optionally pass an ALE file to merge ALE columns.')
     parser.add_argument('-f', '--final', metavar='BIN', help='Export EDL for cutting in final vfx in AVID, requires an AVID bin (TAB)')
     parser.add_argument('-c', '--compare', metavar='NEW_EDL', help='Compare new EDL against loaded project and export changelist markers file')
 
@@ -1598,11 +1735,17 @@ def main():
         print("\nExported:")
         export_ale_pulls(PROJECT_FILE, os.path.join(edl_dir, edl_stem + '.ALE'))
         export_pulls_edl(PROJECT_FILE, os.path.join(edl_dir, edl_stem + '_pulls.edl'))
-    elif args.tab:
+    elif args.tab is not None:
         project = load_project()
         edl_dir = project['config']['edl_dir']
         edl_stem = os.path.splitext(project['config']['edl_file'])[0]
-        export_google_tab(PROJECT_FILE, os.path.join(edl_dir, edl_stem + '_TAB.txt'))
+        if args.tab is True:
+            export_google_tab(PROJECT_FILE, os.path.join(edl_dir, edl_stem + '_TAB.txt'))
+        else:
+            ale_stem = os.path.splitext(os.path.basename(args.tab))[0]
+            out_path = os.path.join(edl_dir, f"{edl_stem}_{ale_stem}_merge.txt")
+            print("\nExported:")
+            merge_ale_tab(PROJECT_FILE, args.tab, out_path)
     elif args.final:
         project = load_project()
         edl_dir = project['config']['edl_dir']
