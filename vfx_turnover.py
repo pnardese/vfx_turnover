@@ -1892,8 +1892,7 @@ def main():
             print("Error: project was not imported from an AAF. Run -e with an AAF file first.", file=sys.stderr)
             sys.exit(1)
         if not os.path.exists(aaf_file):
-            print(f"Error: AAF file not found at {aaf_file} — it may have been moved. Update the library with -e.", file=sys.stderr)
-            sys.exit(1)
+            sys.exit(1)  # warning already printed by load_project()
         check_aaf_consistency(aaf_file)
         user, color, position, clip_color = prompt_aaf_options(project['config'])
         project['config']['markers'] = {'user': user, 'color': color, 'position': position, 'clip_color': clip_color}
