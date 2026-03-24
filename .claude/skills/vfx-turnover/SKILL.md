@@ -1,282 +1,141 @@
 ---
 name: vfx-turnover
-description: Reference for working with the vfx-turnover CLI tool and its codebase. Use when adding features, fixing bugs, or understanding the tool's behavior — CLI flags, project JSON structure, VFX ID naming, export formats, and AAF workflow.
+description: Reference for the vfx-turnover CLI tool. Use when helping a VFX editor run commands, understand workflow steps, troubleshoot exports, or work with VFX IDs — covers all CLI flags, what each export produces, VFX ID naming, and Avid workflow context.
 ---
 
-# vfx-turnover Reference
+# vfx-turnover
 
-## Overview
+CLI tool for managing the VFX workflow in Avid Media Composer. Imports EDL or AAF files, generates VFX IDs, and exports markers, subcaps, pull ALEs, TAB spreadsheets, and AAF clip notes.
 
-Single-file CLI tool: `vfx_turnover.py`, installed via `pipx install -e .` as `vfx-turnover`.
-State persisted at `~/.config/vfx_turnover/vfx_project.json`.
+Project settings are saved at `~/.config/vfx_turnover/vfx_project.json` and reused across all commands.
 
-## Installation
+---
 
-Requires Python 3.10+ and [pipx](https://pipx.pypa.io).
+## Commands
 
-```bash
-git clone https://github.com/pnardese/vfx_turnover.git
-cd vfx_turnover
-pipx install -e .
-```
+| Flag | What it does |
+|------|-------------|
+| `-i` | Set up project: Project ID, FPS, resolution, handle frames. Run once at project start; settings persist. |
+| `-e FILE` | Import an EDL or AAF — creates the project shot list. Accepts `.edl` or `.aaf`. |
+| `-m` | Export Avid markers file. Prompts for user name, track, color, and position. |
+| `-s` | Export subcaps file (no prompts, uses saved settings). |
+| `-p` | Export ALE + Pulls EDL for creating pull subclips in Avid. |
+| `-t` | Export TAB spreadsheet with VFX IDs and source timecodes. |
+| `-t FILE.ALE` | Same as `-t` but merged with ALE metadata columns (matched by reel/tape name). |
+| `-a` | Export new AAF with VFX IDs written as clip notes, markers, and clip color. Requires AAF imported via `-e`. |
+| `-f BIN` | Export EDL for cutting final VFX deliveries into Avid. Requires an Avid bin exported as TAB. |
+| `-c NEW_EDL` | Compare a revised EDL against the current project and export a changelist. |
 
-After pulling updates:
-```bash
-pipx reinstall vfx-turnover
-```
+---
 
-Dependencies (from `requirements.txt`): `aaf2`, `timecode`, `pandas`.
+## Typical Workflow
 
-## CLI Flags
+1. **`-i`** — initialize project settings
+2. **`-e timeline.edl`** — import the VFX EDL (or AAF)
+3. **`-m`** — export markers → import into Avid to mark VFX shots on timeline
+4. **`-s`** — export subcaps → import into Avid as subtitles
+5. **`-p`** — export ALE + Pulls EDL → create pull subclips in Avid bin
+6. **`-t`** — export TAB → import into spreadsheet/database
+7. **`-a`** — (AAF workflow only) write VFX IDs back to AAF as clip notes
 
-| Flag | Name | Description |
-|------|------|-------------|
-| `-i` | `--init` | Initialize project settings (ProjectID, fps, resolution, handles). Prompts interactively, preserves existing config values as defaults. |
-| `-e FILE` | `--edl` | Import an EDL or AAF file. Detects by extension (`.aaf` → `aaf_to_json`; otherwise → `edl_to_json`). Creates/overwrites project JSON. |
-| `-a` | `--aaf_write` | Export a new AAF with VFX IDs as clip notes, markers, and clip color. Requires project imported from an AAF via `-e`. Runs consistency check first. |
-| `-m` | `--markers` | Export markers file for Avid. Prompts for user, track, color, position. |
-| `-s` | `--subcaps` | Export only the subcaps file (no prompts). |
-| `-p` | `--pulls` | Export ALE and Pulls EDL for creating pull subclips in Avid. |
-| `-t [ALE]` | `--tab` | Export TAB-delimited spreadsheet file. Optional ALE path merges ALE clip metadata into the output (matched by `Tape`). |
-| `-f BIN` | `--final` | Export EDL for cutting final VFX into Avid. Requires an Avid bin TAB file as argument. |
-| `-c NEW_EDL` | `--compare` | Compare a new EDL against the loaded project and export changelist markers + TAB files. |
+---
 
-## Project JSON Structure
+## VFX ID Format
 
-Path: `~/.config/vfx_turnover/vfx_project.json`
+`{ProjectID}_{scene}_{counter}` — e.g. `GDN_033_0010`
 
-```json
-{
-    "config": {
-        "edl_file": "timeline.edl",           // basename of source EDL/AAF
-        "edl_dir": "/path/to/edl",             // absolute dir; all exports go here
-        "ProjectID": "GDN",                    // used in VFX ID generation
-        "fps": "24",                           // string, one of FPS_CHOICES
-        "resolution": "1080",                  // string, stored as-is
-        "handles": 10,                         // int, extra frames for pulls
-        "markers": {
-            "user": "vfx",
-            "track": "V1",                     // TC, V1–V8
-            "color": "green",
-            "position": "start",               // start | middle
-            "clip_color": "none"               // -a only; 32 Avid colors or 'none'
-        }
-    },
-    "edl_metadata": {
-        "edl_title": "timeline",
-        "edl_fcm": "NON-DROP FRAME"
-    },
-    "events": [ ... ]                          // list of event dicts
-}
-```
+- **ProjectID**: set via `-i` (e.g. `GDN`)
+- **scene**: 3-digit scene number extracted from clip name (e.g. clip `33-2-/01 A` → `033`)
+- **counter**: 4-digit, starts at `0010`, increments by `10` per scene, resets on scene change
 
-### Event dict fields
+IDs are auto-generated only when the EDL/AAF has no existing markers or clip notes. If some clips already have IDs and others don't, the import warns and leaves the missing ones empty.
 
-Both EDL and AAF imports produce the same event structure:
+When importing an AAF: clip note ID takes priority over marker ID.
 
-```json
-{
-    "type": "event",
-    "event_number": "1",
-    "reel": "A059_A006_0519W9_001",
-    "track": "V",
-    "transition": "C",
-    "source_start_TC": "00:58:26:09",
-    "source_end_TC":   "00:58:30:15",
-    "record_start_TC": "01:00:00:00",
-    "record_end_TC":   "01:00:04:06",
-    "FROM": "33-2-/01 A",           // subclip name (scene-based)
-    "LOC": "GDN_033_0010",          // VFX ID from EDL *LOC marker; empty if auto-generated
-    "SOURCE": "A059_A006_0519W9_001",
-    "VFX ID": "GDN_033_0010",       // final VFX ID used by all exports
-    "job_description": "REMOVE BACKGROUND",  // text after VFX ID in marker/clip note
-    "clip_note": "GDN_033_0010 REMOVE BACKGROUND",  // raw _COMMENT value (set by -a)
-    "color": "none",                // Avid clip color name or 'none' (set by -a)
-    "has_clip_note": false,         // AAF import only: was _COMMENT present?
-    "has_marker": false             // AAF import only: was EventMobSlot marker present?
-}
-```
-
-`LOC` is set only for EDL import when a `*LOC` line is found. It drives VFX ID matching in `compare_edls` — auto-generated IDs are NOT used for matching (they shift when clips are added/removed).
-
-## VFX ID Naming
-
-Format: `{ProjectID}_{scene}_{counter}` — e.g. `GDN_033_0010`
-
-- `scene`: 3-digit zero-padded scene number extracted from clip name (first `\d+` match), e.g. clip `33-2-/01 A` → `033`
-- `counter`: 4-digit, starts at `0010`, increments by 10 per scene; resets to `0010` on scene change
-- Auto-generation only when **no clips** have existing IDs (all-or-nothing)
-- If some clips have IDs and others don't → error listing affected clips/TCs
-
-Priority when reading existing IDs (clip note > marker > auto-generated):
-```python
-vfx_id = clip_note_id or marker_id or generated_id
-job_description = clip_note_desc or marker_desc
-```
+---
 
 ## Output Files
 
-All outputs are saved in `project['config']['edl_dir']`, named from `edl_stem` (`os.path.splitext(edl_file)[0]`):
+All files are saved in the same folder as the source EDL or AAF.
 
-| Flag | Output file(s) |
-|------|---------------|
+| Command | Output file(s) |
+|---------|---------------|
 | `-m` | `<stem>_markers.txt` |
 | `-s` | `<stem>_subcaps.txt` |
 | `-p` | `<stem>.ALE`, `<stem>_pulls.edl` |
 | `-t` | `<stem>_TAB.txt` |
-| `-t ALE` | `<stem>_<ale_stem>_merge.txt` |
+| `-t FILE.ALE` | `<stem>_<ale_stem>_merge.txt` |
 | `-f` | `<stem>_vfx_final.edl` |
-| `-c` | next to the NEW edl: `<new_stem>_changelist_markers.txt`, `<new_stem>_changelist_TAB.txt` |
-| `-a` | next to source AAF: `<stem>_new.aaf` |
+| `-c` | `<new_stem>_changelist_markers.txt`, `<new_stem>_changelist_TAB.txt` (next to the new EDL) |
+| `-a` | `<stem>_new.aaf` (next to source AAF) |
 
-All exports call `confirm_overwrite(path)` and prompt before overwriting.
+If an output file already exists, the tool asks before overwriting.
 
-## Markers File Format
-
-Tab-delimited, one line per event:
-```
-user\trecord_TC\ttrack\tcolor\tcomment\t1
-```
-`comment` = `VFX_ID job_description` if job_description present, else just `VFX_ID`.
-Position `middle` → TC = `record_start + half_duration`.
-
-## Subcaps File Format
-```
-<begin subtitles>
-REC_START REC_END
-VFX_ID
-
-...
-<end subtitles>
-```
-
-## ALE Pulls Format
-
-Standard Avid ALE with columns: `Name`, `Tracks`, `Start`, `End`, `Tape`.
-Source TCs are expanded by `handles` frames on both sides.
+---
 
 ## TAB File Columns
 
-`#`, `Name`, `Thumbnail`(empty), `Comments`(job_description), `Status`(empty), `Date`(empty), `Duration`, `Start`, `End`, `Frame Count Duration`, `Handles`, `Tape`
+`#`, `Name` (VFX ID), `Thumbnail`, `Comments` (job description), `Status`, `Date`, `Duration`, `Start`, `End`, `Frame Count Duration`, `Handles`, `Tape`
 
-## ALE Merge (`-t ALE` → `merge_ale_tab`)
+When merged with an ALE (`-t FILE.ALE`): all ALE columns are appended except those already present (`Name`, `Start`, `End`, `Tape`, `Duration`). ALE `Comments` is renamed `ALE Comments`.
 
-Merges an Avid ALE file with the loaded project events, exporting an enhanced TAB file.
+---
 
-**Matching**: `event['reel']` == ALE `Tape` column (both carry `_001` suffix — matched directly).
+## ALE Merge (`-t FILE.ALE`)
 
-**Validation**:
-- ALE `FPS` != project `fps` → error + abort
-- ALE `VIDEO_FORMAT` != project `resolution` → warning only
-- Missing `Tape` column → error + abort
+Matches each project shot to an ALE row by **reel/tape name** only. Validates that the ALE FPS matches the project FPS (mismatch aborts). Resolution mismatch prints a warning but continues. Reports matched and unmatched shot counts after export.
 
-**Output columns**: standard TAB columns + all ALE columns except `Name`, `Start`, `End`, `Tape`, `Duration` (already present). ALE `Comments` renamed to `ALE Comments`.
-
-**Output file**: `<edl_stem>_<ale_stem>_merge.txt` in `edl_dir`.
-
-**Functions**: `parse_ale(ale_file_path) -> dict` returns `{heading, columns, rows}`; `merge_ale_tab(json_file_path, ale_file_path, output_path)`.
+---
 
 ## Changelist (`-c`)
 
-`compare_edls(old_events, new_events, fps_val, handles_val)` returns events with `change_status`:
+Compares a revised EDL against the current loaded project. Shots are matched by VFX ID (if the original EDL had markers) or by reel + source timecode as fallback.
 
-| Status | Meaning |
-|--------|---------|
-| `unchanged` | no change |
-| `new` | not in old project |
-| `removed` | in old but not new |
-| `moved` | record TC shifted, source unchanged |
-| `trimmed_ok` | source trimmed, within handles → no pull |
-| `trimmed_pull` | source trimmed, beyond handles → pull needed |
-| `moved_trimmed_ok` | moved + trimmed, within handles |
-| `moved_trimmed_pull` | moved + trimmed, beyond handles |
+| Change status | Meaning |
+|--------------|---------|
+| `new` | Shot not in previous version — needs pull |
+| `removed` | Shot removed from cut |
+| `moved` | Record timecode shifted, source unchanged |
+| `trimmed_ok` | Source trimmed, but within handle frames — no new pull |
+| `trimmed_pull` | Source trimmed beyond handles — new pull needed |
+| `moved_trimmed_ok` | Moved and trimmed within handles |
+| `moved_trimmed_pull` | Moved and trimmed, needs pull |
+| `unchanged` | No change |
 
-**Matching logic** (order matters):
-1. VFX ID match — only if the old event has a `LOC` value (i.e. came from a real marker, not auto-generated)
-2. Fallback: `reel + source_start_TC` key match
+Exports a markers file and TAB file next to the new EDL.
 
-**Move detection**: `moved = (rec_in_d != src_in_d) OR (rec_out_d != src_out_d)`
-Frame deltas: `+` = extended, `-` = reduced. Within-handles check: new source must stay within `old ± handles` on each end.
+---
 
-**Marker label format** (written to changelist_markers.txt):
-```
-GDN_033_0010 NEW - NEED TO PULL
-GDN_033_0020 REMOVED
-GDN_033_0030 MOVED
-GDN_033_0040 TRIMMED TAIL +7f - NO PULL NEEDED
-GDN_033_0050 TRIMMED TAIL +15f - NEED TO PULL
-GDN_033_0060 TRIMMED HEAD -5f - NO PULL NEEDED
-GDN_033_0070 TRIMMED HEAD & TAIL H:-3f T:+8f - NO PULL NEEDED
-GDN_033_0080 MOVED TRIMMED TAIL +4f - NEED TO PULL
-```
+## AAF Export (`-a`)
 
-## AAF Import (`-e sequence.aaf` → `aaf_to_json`)
+Copies the source AAF and writes VFX IDs as:
+- **Clip notes** (`_COMMENT`) — visible in Avid bin
+- **Timeline markers** — visible on the Avid timeline
+- **Clip color** — optional Avid clip color (32 colors available)
 
-- Finds main `CompositionMob` with a picture slot
-- Sequence start TC from `Timecode` slot (default `01:00:00:00`)
-- Iterates `video_slot.segment.components`; advances `timeline_pos` for every component including `Filler`
-- Handles `SourceClip`, `Selector` (uses `comp['Selected'].value`; `_COMMENT` lives on the `Selector`), `OperationGroup` (iterates `InputSegments`)
-- Source TC from 4-level mob chain: `SubClip → MasterMob → CDCIDescriptor → TapeDescriptor`; sum all `StartTime` offsets + `comp.start`
-- Reel name: `TapeDescriptor.name` (with `_001`) → fallback `MasterMob.name` → `subclip.name`
-- Reads existing clip notes (`_COMMENT` on `ComponentAttributeList`) and markers (`_ATN_CRM_COM` on `EventMobSlot`) for VFX ID reuse
-- Reads existing clip color from `_COLOR_R/G/B`
+Prompts for: Avid user name, marker color, marker position (`start` / `middle`), clip color.
 
-## AAF Export (`-a` → `json_to_aaf`)
+Requires the project to have been imported from an AAF via `-e`. If a clip already has a marker in the AAF, the note is always updated to match. Reports an error if clip note and marker IDs disagree on any clip — fix the mismatch in Avid before re-running.
 
-1. `check_aaf_consistency(aaf_file)` — exits if mismatch between clip note ID and marker ID on any clip
-2. `prompt_aaf_options` — user, color, position, clip_color
-3. Copies source AAF to `<stem>_new.aaf`
-4. For each clip:
-   - Writes/updates `_COMMENT` in `ComponentAttributeList` (uses `f.create.TaggedValue()`)
-   - Writes `_COLOR_R/G/B` if `clip_color != 'none'` (16-bit: 8bit × 256)
-   - Preserves existing markers; queues new `DescriptiveMarker` objects
-5. Assigns all markers at once: `seq['Components'].value = all_markers`
-6. After export, updates `event['clip_note']` and `event['color']` in project JSON
+---
 
-**Clip note write logic**:
-- If clip already has a marker in the AAF: always write/update note with marker's VFX ID
-- If no existing marker: write only if no clip note exists yet (`has_clip_note == False`)
+## Marker Settings
 
-**Effective VFX ID** in exported AAF: marker's ID takes priority over project JSON's ID.
+Prompted interactively by `-m` and `-a`, then saved as project defaults:
 
-## Constants
+| Setting | Options | Default |
+|---------|---------|---------|
+| User name | any string | `vfx` |
+| Track | `TC`, `V1`–`V8` | `V1` |
+| Color | `green`, `red`, `blue`, `cyan`, `magenta`, `yellow`, `black`, `white` | `green` |
+| Position | `start`, `middle` | `start` |
+| Clip color (`-a` only) | 32 Avid colors or `none` | `none` |
 
-```python
-FPS_CHOICES     = ['23.976', '24', '25', '29.97', '30', '59.94', '60']
-MARKER_COLORS   = ['green', 'red', 'blue', 'cyan', 'magenta', 'yellow', 'black', 'white']
-MARKER_TRACKS   = ['TC', 'V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'V8']
-MARKER_POSITIONS = ['start', 'middle']
-CLIP_COLORS     = ['none'] + list(CLIP_COLOR_MAP.keys())   # 33 entries
-```
+---
 
-`MARKER_COLOR_MAP` maps color name → `(color_str, {'red': int, 'green': int, 'blue': int})` (0–65535).
-`CLIP_COLOR_MAP` maps color name → `(r16, g16, b16)` (8-bit × 256).
+## Important Workflow Notes
 
-## Key Gotchas
-
-1. **`-a` requires project imported from AAF** — errors if `edl_file` doesn't end in `.aaf`
-2. **Multicam/MultiGroup clips must be committed in Avid** before EDL or AAF export — otherwise wrong source TCs or missing reel names
-3. **`markers` config key may be missing sub-keys** — always use `.get('key', DEFAULT_CONFIG['markers']['key'])` pattern; the `KeyError` fix is to fall back to `DEFAULT_CONFIG`
-4. **Auto-generated VFX IDs are NOT used for changelist matching** — only `LOC`-sourced IDs match by VFX ID; others fall back to reel+TC
-5. **`comp.start` not `comp['StartTime'].value`** — the `[]` accessor doesn't work for `StartTime` on `SourceClip`; use `getattr(comp, 'start', 0) or 0`
-6. **ALE heading hardcodes `VIDEO_FORMAT 1080`** — not read from project config
-
-## prompt_init_options / DEFAULT_CONFIG
-
-```python
-DEFAULT_CONFIG = {
-    'ProjectID': 'PID',
-    'fps': '24',
-    'resolution': '1080',
-    'handles': 10,
-    'markers': {
-        'user': 'vfx',
-        'track': 'V1',
-        'color': 'green',
-        'position': 'start',
-        'clip_color': 'none',
-    }
-}
-```
-
-`-i` preserves existing values as defaults when re-initializing. `-e` carries over `config` from existing project file (ProjectID, fps, resolution, handles, markers) so settings survive re-imports.
+- **Commit multicam and MultiGroup clips in Avid before exporting EDL or AAF** — uncommitted clips produce wrong source timecodes or missing reel names.
+- **`-a` requires the project to have been imported from an AAF** (`-e sequence.aaf`). It won't work on EDL-imported projects.
+- **Auto-generated VFX IDs are not used for changelist matching** — only IDs that came from real EDL markers (`*LOC` lines) are matched by ID; others fall back to reel + source timecode.
+- **FPS must match** when merging an ALE — the tool aborts if the ALE FPS differs from the project FPS.
