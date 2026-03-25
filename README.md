@@ -338,7 +338,7 @@ done
 | `/vfx-pulls` | Export ALE and Pulls EDL |
 | `/vfx-tab` | Export TAB spreadsheet file |
 | `/vfx-merge ALE` | Merge an ALE file with project VFX IDs and export an enhanced TAB file |
-| `/vfx-ids` | List all VFX IDs with job description, tape, source in/out, and record in/out |
+| `/vfx-ids` | List VFX IDs for all library timelines (active marked with `*`); pass a name or index to filter to one timeline |
 | `/vfx-rename OLD NEW` | Rename VFX IDs using a before/after example (applies pattern to all IDs) |
 | `/vfx-status` | Show loaded project summary |
 | `/vfx-report TAB [DIR]` | Generate a PDF report from a TAB file with optional thumbnails folder |
