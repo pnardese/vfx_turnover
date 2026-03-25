@@ -42,7 +42,7 @@ def load_project():
     """Load project file, set globals, return data dict."""
     global ProjectID, fps, handles
     if not os.path.exists(PROJECT_FILE):
-        print(f"Error: No project file found. Run -e first to import an EDL or AAF.", file=sys.stderr)
+        print(f"Error: No project file found. Run -i first to initialize a project.", file=sys.stderr)
         sys.exit(1)
     with open(PROJECT_FILE) as f:
         project = json.load(f)
@@ -50,7 +50,14 @@ def load_project():
     ProjectID = cfg['ProjectID']
     fps = cfg['fps']
     handles = cfg['handles']
-    print(f"EDL: {cfg['edl_file']}")
+    entry = get_active_entry(project)
+    if entry:
+        print(f"EDL: {entry['edl_file']}")
+        src_path = os.path.join(entry['edl_dir'], entry['edl_file'])
+        if not os.path.exists(src_path):
+            print(f"  Warning: source file not found at {entry['edl_dir']} — it may have been moved.")
+    else:
+        print("No EDL loaded. Use -e to import an EDL or AAF.")
     return project
 
 def save_project(project):
@@ -58,6 +65,73 @@ def save_project(project):
     os.makedirs(PROJECT_DIR, exist_ok=True)
     with open(PROJECT_FILE, 'w') as f:
         json.dump(project, f, indent=4)
+
+
+def get_active_entry(project: dict) -> dict:
+    """Return the active library entry, or first entry, or empty dict."""
+    active = project['config'].get('active')
+    for entry in project.get('library', []):
+        if entry['edl_file'] == active:
+            return entry
+    entries = project.get('library', [])
+    return entries[0] if entries else {}
+
+
+def library_manager(project: dict):
+    """Interactive manager for the EDL/AAF library."""
+    while True:
+        library = project.get('library', [])
+        active = project['config'].get('active')
+        print()
+        if not library:
+            print("Library is empty.")
+        else:
+            print(f"Library ({len(library)} {'entry' if len(library) == 1 else 'entries'}):")
+            for i, entry in enumerate(library, 1):
+                marker = '*' if entry['edl_file'] == active else ' '
+                shot_count = len(entry.get('events', []))
+                print(f"  {marker} {i}  {entry['edl_file']:<40}  {shot_count} shots   {entry['edl_dir']}")
+        print()
+        print("[L] Load (set active)   [R] Remove   [C] Clear all   [Q] Quit")
+        choice = input("> ").strip().upper()
+
+        if choice == 'Q':
+            break
+        elif choice == 'L':
+            if not library:
+                print("Library is empty.")
+                continue
+            raw = input(f"Entry number to load [1-{len(library)}]: ").strip()
+            if not raw.isdigit() or not (1 <= int(raw) <= len(library)):
+                print("Invalid selection.")
+                continue
+            selected = library[int(raw) - 1]
+            project['config']['active'] = selected['edl_file']
+            save_project(project)
+            print(f"Active: {selected['edl_file']}")
+        elif choice == 'R':
+            if not library:
+                print("Library is empty.")
+                continue
+            raw = input(f"Entry number to remove [1-{len(library)}]: ").strip()
+            if not raw.isdigit() or not (1 <= int(raw) <= len(library)):
+                print("Invalid selection.")
+                continue
+            removed = library.pop(int(raw) - 1)
+            if project['config'].get('active') == removed['edl_file']:
+                project['config']['active'] = library[0]['edl_file'] if library else None
+            project['library'] = library
+            save_project(project)
+            print(f"Removed: {removed['edl_file']}")
+        elif choice == 'C':
+            confirm = input("Clear all library entries? [y/N]: ").strip().lower()
+            if confirm in ('y', 'yes'):
+                project['library'] = []
+                project['config']['active'] = None
+                save_project(project)
+                print("Library cleared.")
+        else:
+            print("Invalid choice.")
 
 
 def confirm_overwrite(path: str) -> bool:
@@ -339,25 +413,26 @@ def json_to_markers(json_file_path: str, markers_file_path: str, user: str = 'vf
 
     with open(json_file_path) as input_file:
         json_file = json.load(input_file) # Load JSON file
+    entry = get_active_entry(json_file)
 
     if not confirm_overwrite(markers_file_path):
         return
     try:
         with open(markers_file_path, 'w') as output_file: # Open markers file
-            for i in range(len(json_file['events'])): # Loop through JSON file
+            for i in range(len(entry['events'])): # Loop through JSON file
                 if position == 'middle':
-                    rec_start = Timecode(fps, json_file['events'][i]['record_start_TC'])
-                    rec_end = Timecode(fps, json_file['events'][i]['record_end_TC'])
+                    rec_start = Timecode(fps, entry['events'][i]['record_start_TC'])
+                    rec_end = Timecode(fps, entry['events'][i]['record_end_TC'])
                     half_duration = (rec_end.frames - rec_start.frames) // 2
                     marker_tc = str(rec_start + half_duration)
                 else:
-                    marker_tc = json_file['events'][i]['record_start_TC']
-                vfx_id = json_file['events'][i]['VFX ID']
-                job_desc = json_file['events'][i].get('job_description', '')
+                    marker_tc = entry['events'][i]['record_start_TC']
+                vfx_id = entry['events'][i]['VFX ID']
+                job_desc = entry['events'][i].get('job_description', '')
                 comment = f"{vfx_id} {job_desc}".strip() if job_desc else vfx_id
                 markers_file_line = create_string('\t', user, marker_tc, track_number, marker_color, comment, '1') # Define markers file line
-                # markers_file_line = user + '\t' + json_file['events'][i]['record_start_TC'] + '\t' + track_number + '\t' + marker_color + '\t' + \
-                # json_file['events'][i]['VFX ID'] + '\t' + '1' + '\n' # Define markers file line
+                # markers_file_line = user + '\t' + entry['events'][i]['record_start_TC'] + '\t' + track_number + '\t' + marker_color + '\t' + \
+                # entry['events'][i]['VFX ID'] + '\t' + '1' + '\n' # Define markers file line
                 output_file.write(markers_file_line + '\n') # Write line to markers file
         print(f"  Markers:  {os.path.basename(markers_file_path)}")
     except Exception as e:
@@ -366,9 +441,10 @@ def json_to_markers(json_file_path: str, markers_file_path: str, user: str = 'vf
 
 def json_to_subcaps(json_file_path: str, sub_file_path: str):
     """Reads a JSON file and export a subcap file for AVID."""
-    
+
     with open(json_file_path) as input_file:
         json_file = json.load(input_file) # Load JSON file
+    entry = get_active_entry(json_file)
 
     if not confirm_overwrite(sub_file_path):
         return
@@ -376,11 +452,11 @@ def json_to_subcaps(json_file_path: str, sub_file_path: str):
         with open(sub_file_path, 'w') as output_file:
             sub_file_line = '<begin subtitles>\n' # Define start of subcaps file
             output_file.write(sub_file_line)
-            for i in range(len(json_file['events'])): # Loop through JSON file
-                sub_file_line = create_string(' ', json_file['events'][i]['record_start_TC'], json_file['events'][i]['record_end_TC']) # Define subcaps file line
-                # sub_file_line = json_file['events'][i]['record_start_TC'] + ' ' + json_file['events'][i]['record_end_TC'] + '\n' # Define subcaps file line
+            for i in range(len(entry['events'])): # Loop through JSON file
+                sub_file_line = create_string(' ', entry['events'][i]['record_start_TC'], entry['events'][i]['record_end_TC']) # Define subcaps file line
+                # sub_file_line = entry['events'][i]['record_start_TC'] + ' ' + entry['events'][i]['record_end_TC'] + '\n' # Define subcaps file line
                 output_file.write(sub_file_line + '\n') # Write line to subcaps file
-                sub_file_line = json_file['events'][i]['VFX ID']  + '\n'# Define subcaps file line
+                sub_file_line = entry['events'][i]['VFX ID']  + '\n'# Define subcaps file line
                 output_file.write(sub_file_line + '\n') # Write line to subcaps file
             sub_file_line = '<end subtitles>\n' # Define end of subcaps file
             output_file.write(sub_file_line) # Write line to subcaps file
@@ -405,22 +481,23 @@ Data\n\
     # handles_TC = Timecode(fps, '00:00:00:' + str(handles))
     with open(json_file_path) as input_file:
         json_file = json.load(input_file) # Load JSON file
-    
+    entry = get_active_entry(json_file)
+
     if not confirm_overwrite(ale_pulls_file_path):
         return
     try:
         with open(ale_pulls_file_path, 'w') as output_file:
             output_file.write(heading) # Write heading to ALE file
-            for i in range(len(json_file['events'])):
-                new_source_start_TC = Timecode(fps, json_file['events'][i]['source_start_TC']) - handles # Define new source start timecode with handles
-                # new_source_end_TC = Timecode(fps, json_file['events'][i]['source_end_TC']) + handles - 1 # Define new source end timecode with handles
-                new_source_end_TC = Timecode(fps, json_file['events'][i]['source_end_TC']) + handles # Define new source end timecode with handles
+            for i in range(len(entry['events'])):
+                new_source_start_TC = Timecode(fps, entry['events'][i]['source_start_TC']) - handles # Define new source start timecode with handles
+                # new_source_end_TC = Timecode(fps, entry['events'][i]['source_end_TC']) + handles - 1 # Define new source end timecode with handles
+                new_source_end_TC = Timecode(fps, entry['events'][i]['source_end_TC']) + handles # Define new source end timecode with handles
 
-                # print(Timecode(fps, json_file['events'][i]['source_end_TC']) + handles_TC.frame_number)
+                # print(Timecode(fps, entry['events'][i]['source_end_TC']) + handles_TC.frame_number)
                 # print(new_source_end_TC)
-                sub_file_line = create_string('\t', json_file['events'][i]['VFX ID'], 'V', str(new_source_start_TC), str(new_source_end_TC), json_file['events'][i]['reel']) # Define ALE file line
-                # sub_file_line = json_file['events'][i]['VFX ID'] + '\t' + 'V' + '\t' + str(new_source_start_TC) + '\t' + str(new_source_end_TC) + \
-                # '\t' + json_file['events'][i]['reel'] + '\n' # Define ALE file line
+                sub_file_line = create_string('\t', entry['events'][i]['VFX ID'], 'V', str(new_source_start_TC), str(new_source_end_TC), entry['events'][i]['reel']) # Define ALE file line
+                # sub_file_line = entry['events'][i]['VFX ID'] + '\t' + 'V' + '\t' + str(new_source_start_TC) + '\t' + str(new_source_end_TC) + \
+                # '\t' + entry['events'][i]['reel'] + '\n' # Define ALE file line
                 output_file.write(sub_file_line + '\n') # Write line to ALE file
             print(f"  ALE:       {os.path.basename(ale_pulls_file_path)}")
     except Exception as e:  # Catch exception
@@ -431,7 +508,8 @@ def export_pulls_edl(json_file_path: str, edl_pulls_file_path: str):
     """Export an EDL for cutting in pulls in AVID."""
     with open(json_file_path) as input_file:
         json_file = json.load(input_file) # Load JSON file
-    
+    entry = get_active_entry(json_file)
+
     if not confirm_overwrite(edl_pulls_file_path):
         return
     try:
@@ -439,22 +517,22 @@ def export_pulls_edl(json_file_path: str, edl_pulls_file_path: str):
             heading = 'TITLE: ' + os.path.splitext(os.path.basename(edl_pulls_file_path))[0]+ '\n'\
             'FCM: NON-DROP FRAME\n' # Define EDL heading
             output_file.write(heading) # Write heading to EDL file
-            for i in range(len(json_file['events'])): # Loop through JSON file
+            for i in range(len(entry['events'])): # Loop through JSON file
                 edl_pulls_file_line = create_string(
-                    ' ', 
-                    json_file['events'][i]['event_number'], 
-                    json_file['events'][i]['VFX ID'], 
-                    json_file['events'][i]['track'], 
-                    json_file['events'][i]['transition'], 
-                    json_file['events'][i]['source_start_TC'], 
-                    json_file['events'][i]['source_end_TC'],
-                    # str(Timecode(fps, json_file['events'][i]['source_end_TC']) - 1), # per gestire i consolidati senza maniglie...
-                    json_file['events'][i]['record_start_TC'], 
-                    json_file['events'][i]['record_end_TC'],
+                    ' ',
+                    entry['events'][i]['event_number'],
+                    entry['events'][i]['VFX ID'],
+                    entry['events'][i]['track'],
+                    entry['events'][i]['transition'],
+                    entry['events'][i]['source_start_TC'],
+                    entry['events'][i]['source_end_TC'],
+                    # str(Timecode(fps, entry['events'][i]['source_end_TC']) - 1), # per gestire i consolidati senza maniglie...
+                    entry['events'][i]['record_start_TC'],
+                    entry['events'][i]['record_end_TC'],
                 )
-                # edl_pulls_file_line = json_file['events'][i]['event_number'] + ' ' + json_file['events'][i]['VFX ID'] + ' ' + json_file['events'][i]['track'] + ' ' + \
-                # json_file['events'][i]['transition'] + ' ' + json_file['events'][i]['source_start_TC'] + ' ' + json_file['events'][i]['source_end_TC'] + ' ' + \
-                # json_file['events'][i]['record_start_TC'] + ' ' + json_file['events'][i]['record_end_TC'] # Define EDL file line
+                # edl_pulls_file_line = entry['events'][i]['event_number'] + ' ' + entry['events'][i]['VFX ID'] + ' ' + entry['events'][i]['track'] + ' ' + \
+                # entry['events'][i]['transition'] + ' ' + entry['events'][i]['source_start_TC'] + ' ' + entry['events'][i]['source_end_TC'] + ' ' + \
+                # entry['events'][i]['record_start_TC'] + ' ' + entry['events'][i]['record_end_TC'] # Define EDL file line
                 output_file.write(edl_pulls_file_line + '\n') # Write line to EDL file
             print(f"  Pulls EDL: {os.path.basename(edl_pulls_file_path)}")
     except Exception as e:  # Catch exception
@@ -463,9 +541,10 @@ def export_pulls_edl(json_file_path: str, edl_pulls_file_path: str):
 
 def export_google_tab(json_file_path: str, google_file_path: str):
     """Export a TAB file to import into a Spreadsheet."""
-    
+
     with open(json_file_path) as input_file:    # Open JSON file
         json_file = json.load(input_file)   # Load JSON file
+    entry = get_active_entry(json_file)
     if not confirm_overwrite(google_file_path):
         return
     try:
@@ -474,29 +553,29 @@ def export_google_tab(json_file_path: str, google_file_path: str):
             'End' + '\t' + 'Frame Count Duration' + '\t' + 'Handles' + '\t' + 'Tape'   # Define TAB heading
             output_file.write(heading + '\n')   # Write heading to TAB file
             counter = 1  # Define counter of events in JSON file
-            for i in range(len(json_file['events'])):   # Loop through JSON file
-                start_TC = Timecode(fps, json_file['events'][i]['source_start_TC']) # Define start timecode
-                end_TC = Timecode(fps, json_file['events'][i]['source_end_TC']) # Define end timecode
+            for i in range(len(entry['events'])):   # Loop through JSON file
+                start_TC = Timecode(fps, entry['events'][i]['source_start_TC']) # Define start timecode
+                end_TC = Timecode(fps, entry['events'][i]['source_end_TC']) # Define end timecode
                 duration = end_TC - start_TC    # Define duration
                 number_of_frames = duration.frames  # Define number of frames
                 google_file_line = create_string(
                     '\t',
                     str(counter),
-                    json_file['events'][i]['VFX ID'],
+                    entry['events'][i]['VFX ID'],
                     '',
-                    json_file['events'][i].get('job_description', ''),
+                    entry['events'][i].get('job_description', ''),
                     '',
                     '',
                     str(duration),
-                    json_file['events'][i]['source_start_TC'],
-                    json_file['events'][i]['source_end_TC'],
-                    # str(Timecode(fps, json_file['events'][i]['source_end_TC']) - 1), # per gestire i consolidati senza maniglie...
+                    entry['events'][i]['source_start_TC'],
+                    entry['events'][i]['source_end_TC'],
+                    # str(Timecode(fps, entry['events'][i]['source_end_TC']) - 1), # per gestire i consolidati senza maniglie...
                     str(number_of_frames),
                     str(handles),
-                    json_file['events'][i]['reel'],
+                    entry['events'][i]['reel'],
                 )
-                # google_file_line = str(counter) + '\t' +  json_file['events'][i]['VFX ID'] + '\t' + '\t' + '\t' + '\t' + '\t' + str(duration) + '\t' + json_file['events'][i]['source_start_TC'] + '\t' +\
-                # json_file['events'][i]['source_end_TC'] + '\t' + str(number_of_frames) + '\t' + json_file['events'][i]['reel']  # Define TAB file line
+                # google_file_line = str(counter) + '\t' +  entry['events'][i]['VFX ID'] + '\t' + '\t' + '\t' + '\t' + '\t' + str(duration) + '\t' + entry['events'][i]['source_start_TC'] + '\t' +\
+                # entry['events'][i]['source_end_TC'] + '\t' + str(number_of_frames) + '\t' + entry['events'][i]['reel']  # Define TAB file line
                 output_file.write(google_file_line + '\n')  # Write line to TAB file
                 counter += 1    # Increment counter
             print(f"Succesfully exported TAB file: {google_file_path}")   # Print success message
@@ -547,6 +626,7 @@ def merge_ale_tab(json_file_path: str, ale_file_path: str, output_path: str):
     """Export a TAB file merging project VFX IDs with ALE metadata columns."""
     with open(json_file_path) as f:
         project = json.load(f)
+    active_entry = get_active_entry(project)
 
     ale = parse_ale(ale_file_path)
     ale_fps = ale['heading'].get('FPS', '')
@@ -595,7 +675,7 @@ def merge_ale_tab(json_file_path: str, ale_file_path: str, output_path: str):
             out.write(std_header + ('\t' + ale_header if ale_header else '') + '\n')
 
             counter = 1
-            for event in project['events']:
+            for event in active_entry['events']:
                 start_TC = Timecode(fps, event['source_start_TC'])
                 end_TC   = Timecode(fps, event['source_end_TC'])
                 duration = end_TC - start_TC
@@ -632,7 +712,7 @@ def merge_ale_tab(json_file_path: str, ale_file_path: str, output_path: str):
         print(f"  Matched:    {matched} / {matched + unmatched} events")
         if unmatched:
             print(f"  Unmatched:  {unmatched} events (no ALE row — ALE columns left empty)")
-        used_keys = {e['reel'] for e in project['events']}
+        used_keys = {e['reel'] for e in active_entry['events']}
         unused = sum(1 for k in ale_index if k not in used_keys)
         if unused:
             print(f"  ALE rows not used: {unused}")
@@ -890,7 +970,7 @@ def json_to_aaf(json_file_path: str, input_aaf_path: str, output_aaf_path: str,
 
     with open(json_file_path) as input_file:
         json_file = json.load(input_file)
-    events = json_file['events']
+    events = get_active_entry(json_file)['events']
 
     color_str, color_rgb = MARKER_COLOR_MAP.get(color.lower(), MARKER_COLOR_MAP['green'])
     now_ts = int(time.time())
@@ -1595,10 +1675,11 @@ def export_final_vfx_edl(json_file_path: str, final_vfx_bin: str, edl_final_file
     """Export an EDL for cutting in final vfx in AVID."""
     AVID_bin_data = read_csv(final_vfx_bin, delimiter='\t') # Read AVID bin file
     # print(AVID_bin_data)
-    
+
     with open(json_file_path) as input_file:    # Open JSON file
         json_file = json.load(input_file)   # Load JSON file
-    
+    entry = get_active_entry(json_file)
+
     if not confirm_overwrite(edl_final_file_path):
         return
     try:
@@ -1608,26 +1689,26 @@ def export_final_vfx_edl(json_file_path: str, final_vfx_bin: str, edl_final_file
             output_file.write(heading)  # Write heading to EDL file
             for i in range(len(AVID_bin_data['Name'])):  # Loop through AVID bin file
                 # print(AVID_bin_data['Name'][i])
-                for j in range(len(json_file['events'])):   # Loop through JSON file
-                    # print(json_file['events'][j]['VFX ID'])
-                    if json_file['events'][j]['VFX ID'] in AVID_bin_data['Name'][i]:    # Check if VFX ID is in AVID bin file name
-                        print("Processed: ", json_file['events'][j]['VFX ID'])
+                for j in range(len(entry['events'])):   # Loop through JSON file
+                    # print(entry['events'][j]['VFX ID'])
+                    if entry['events'][j]['VFX ID'] in AVID_bin_data['Name'][i]:    # Check if VFX ID is in AVID bin file name
+                        print("Processed: ", entry['events'][j]['VFX ID'])
                         edl_final_file_line = create_string(
-                            ' ', 
-                            json_file['events'][j]['event_number'], 
-                            AVID_bin_data['Name'][i], 
-                            json_file['events'][j]['track'], 
-                            json_file['events'][j]['transition'], 
-                            json_file['events'][j]['source_start_TC'], 
-                            json_file['events'][j]['source_end_TC'],
-                            # str(Timecode(fps, json_file['events'][i]['source_end_TC']) - 1), # per gestire i consolidati senza maniglie... 
-                            json_file['events'][j]['record_start_TC'], 
-                            json_file['events'][j]['record_end_TC'],
+                            ' ',
+                            entry['events'][j]['event_number'],
+                            AVID_bin_data['Name'][i],
+                            entry['events'][j]['track'],
+                            entry['events'][j]['transition'],
+                            entry['events'][j]['source_start_TC'],
+                            entry['events'][j]['source_end_TC'],
+                            # str(Timecode(fps, entry['events'][i]['source_end_TC']) - 1), # per gestire i consolidati senza maniglie...
+                            entry['events'][j]['record_start_TC'],
+                            entry['events'][j]['record_end_TC'],
                         )
                         # print(edl_final_file_line)
-                        # edl_final_file_line = json_file['events'][j]['event_number'] + ' ' + AVID_bin_data['Name'][i] + ' ' + json_file['events'][j]['track'] + ' ' + \
-                        # json_file['events'][j]['transition'] + ' ' + json_file['events'][j]['source_start_TC'] + ' ' + json_file['events'][j]['source_end_TC'] + ' ' + \
-                        # json_file['events'][j]['record_start_TC'] + ' ' + json_file['events'][j]['record_end_TC']   # Define EDL file line
+                        # edl_final_file_line = entry['events'][j]['event_number'] + ' ' + AVID_bin_data['Name'][i] + ' ' + entry['events'][j]['track'] + ' ' + \
+                        # entry['events'][j]['transition'] + ' ' + entry['events'][j]['source_start_TC'] + ' ' + entry['events'][j]['source_end_TC'] + ' ' + \
+                        # entry['events'][j]['record_start_TC'] + ' ' + entry['events'][j]['record_end_TC']   # Define EDL file line
                         output_file.write(edl_final_file_line + '\n')   # Write line to EDL file
             print(f"Succesfully exported EDL file: {edl_final_file_path}")  # Print success message
     except Exception as e:  # Catch exception
@@ -1641,7 +1722,7 @@ def main():
     parser = argparse.ArgumentParser(description='Import EDL, create project and export various stuff for AVID')
 
     parser.add_argument('-i', '--init', action='store_true', help='Initialize project settings (Project ID, FPS, resolution, handles)')
-    parser.add_argument('-e', '--edl', metavar='FILE', help='Import an EDL or AAF and create a project file')
+    parser.add_argument('-e', '--edl', nargs='?', const=True, metavar='FILE', help='Import an EDL or AAF into the library (set as active). Without argument: manage the library interactively.')
     parser.add_argument('-a', '--aaf_write', action='store_true', help='Export a new AAF with VFX ID clip notes (requires project imported from AAF via -e)')
     parser.add_argument('-m', '--markers', action='store_true', help='Export markers file for AVID (interactive options)')
     parser.add_argument('-s', '--subcaps', action='store_true', help='Export subcaps file for AVID')
@@ -1657,21 +1738,18 @@ def main():
         sys.exit(0)
 
     if args.init:
-        if os.path.exists(PROJECT_FILE):
-            with open(PROJECT_FILE) as f:
-                project = json.load(f)
-            old_config = project.get('config', DEFAULT_CONFIG.copy())
-        else:
-            project = {'config': {}, 'edl_metadata': {}, 'events': []}
-            old_config = DEFAULT_CONFIG.copy()
-        project_id, fps_val, resolution, handles_val = prompt_init_options(old_config)
-        old_config.update({
-            'ProjectID': project_id,
-            'fps': fps_val,
-            'resolution': resolution,
-            'handles': handles_val,
-        })
-        project['config'] = old_config
+        project_id, fps_val, resolution, handles_val = prompt_init_options(DEFAULT_CONFIG)
+        project = {
+            'config': {
+                'active': None,
+                'ProjectID': project_id,
+                'fps': fps_val,
+                'resolution': resolution,
+                'handles': handles_val,
+                'markers': DEFAULT_CONFIG['markers'].copy(),
+            },
+            'library': [],
+        }
         os.makedirs(PROJECT_DIR, exist_ok=True)
         with open(PROJECT_FILE, 'w') as f:
             json.dump(project, f, indent=2)
@@ -1680,42 +1758,50 @@ def main():
         print(f"  FPS:         {fps_val}")
         print(f"  Resolution:  {resolution}")
         print(f"  Handles:     {handles_val}")
-    elif args.edl:
-        if os.path.exists(PROJECT_FILE):
-            with open(PROJECT_FILE) as f:
-                old_config = json.load(f).get('config', DEFAULT_CONFIG)
+    elif args.edl is not None:
+        if args.edl is True:
+            project = load_project()
+            library_manager(project)
         else:
-            old_config = DEFAULT_CONFIG.copy()
-        project_id = old_config.get('ProjectID', DEFAULT_CONFIG['ProjectID'])
-        fps_val    = old_config.get('fps', DEFAULT_CONFIG['fps'])
-        ProjectID  = project_id
-        fps        = fps_val
-        input_file = args.edl
-        input_dir  = os.path.dirname(os.path.abspath(input_file))
-        if os.path.splitext(input_file)[1].lower() == '.aaf':
-            check_aaf_project_settings(input_file, old_config)
-            file_data = aaf_to_json(input_file)
-        else:
-            file_data = edl_to_json(input_file)
-        project = {
-            'config': {
+            input_file = args.edl
+            if os.path.exists(PROJECT_FILE):
+                with open(PROJECT_FILE) as f:
+                    project = json.load(f)
+            else:
+                print("Error: No project file found. Run -i first to initialize a project.", file=sys.stderr)
+                sys.exit(1)
+            cfg = project['config']
+            ProjectID = cfg.get('ProjectID', DEFAULT_CONFIG['ProjectID'])
+            fps = cfg.get('fps', DEFAULT_CONFIG['fps'])
+            input_dir = os.path.dirname(os.path.abspath(input_file))
+            if os.path.splitext(input_file)[1].lower() == '.aaf':
+                check_aaf_project_settings(input_file, cfg)
+                file_data = aaf_to_json(input_file)
+            else:
+                file_data = edl_to_json(input_file)
+            new_entry = {
                 'edl_file': os.path.basename(input_file),
                 'edl_dir': input_dir,
-                'ProjectID': project_id,
-                'fps': fps_val,
-                'resolution': old_config.get('resolution', DEFAULT_CONFIG['resolution']),
-                'handles': old_config.get('handles', DEFAULT_CONFIG['handles']),
-                'markers': old_config.get('markers', DEFAULT_CONFIG['markers']),
-            },
-            'edl_metadata': file_data['edl_metadata'],
-            'events': file_data['events'],
-        }
-        save_project(project)
-        print("Project saved.")
+                'edl_metadata': file_data['edl_metadata'],
+                'events': file_data['events'],
+            }
+            library = project.get('library', [])
+            for i, entry in enumerate(library):
+                if entry['edl_file'] == new_entry['edl_file']:
+                    library[i] = new_entry
+                    break
+            else:
+                library.append(new_entry)
+            project['library'] = library
+            project['config']['active'] = new_entry['edl_file']
+            save_project(project)
+            print(f"Imported: {new_entry['edl_file']}  ({len(new_entry['events'])} events)")
+            print(f"Active:   {new_entry['edl_file']}")
     elif args.markers:
         project = load_project()
-        edl_dir = project['config']['edl_dir']
-        edl_stem = os.path.splitext(project['config']['edl_file'])[0]
+        entry = get_active_entry(project)
+        edl_dir = entry['edl_dir']
+        edl_stem = os.path.splitext(entry['edl_file'])[0]
         user, track, color, position = prompt_markers_options(project['config'])
         project['config']['markers'] = {'user': user, 'track': track, 'color': color, 'position': position}
         save_project(project)
@@ -1723,21 +1809,24 @@ def main():
         json_to_markers(PROJECT_FILE, os.path.join(edl_dir, edl_stem + '_markers.txt'), user, track, color, position)
     elif args.subcaps:
         project = load_project()
-        edl_dir = project['config']['edl_dir']
-        edl_stem = os.path.splitext(project['config']['edl_file'])[0]
+        entry = get_active_entry(project)
+        edl_dir = entry['edl_dir']
+        edl_stem = os.path.splitext(entry['edl_file'])[0]
         print("\nExported:")
         json_to_subcaps(PROJECT_FILE, os.path.join(edl_dir, edl_stem + '_subcaps.txt'))
     elif args.pulls:
         project = load_project()
-        edl_dir = project['config']['edl_dir']
-        edl_stem = os.path.splitext(project['config']['edl_file'])[0]
+        entry = get_active_entry(project)
+        edl_dir = entry['edl_dir']
+        edl_stem = os.path.splitext(entry['edl_file'])[0]
         print("\nExported:")
         export_ale_pulls(PROJECT_FILE, os.path.join(edl_dir, edl_stem + '.ALE'))
         export_pulls_edl(PROJECT_FILE, os.path.join(edl_dir, edl_stem + '_pulls.edl'))
     elif args.tab is not None:
         project = load_project()
-        edl_dir = project['config']['edl_dir']
-        edl_stem = os.path.splitext(project['config']['edl_file'])[0]
+        entry = get_active_entry(project)
+        edl_dir = entry['edl_dir']
+        edl_stem = os.path.splitext(entry['edl_file'])[0]
         if args.tab is True:
             export_google_tab(PROJECT_FILE, os.path.join(edl_dir, edl_stem + '_TAB.txt'))
         else:
@@ -1747,8 +1836,9 @@ def main():
             merge_ale_tab(PROJECT_FILE, args.tab, out_path)
     elif args.final:
         project = load_project()
-        edl_dir = project['config']['edl_dir']
-        edl_stem = os.path.splitext(project['config']['edl_file'])[0]
+        entry = get_active_entry(project)
+        edl_dir = entry['edl_dir']
+        edl_stem = os.path.splitext(entry['edl_file'])[0]
         export_final_vfx_edl(PROJECT_FILE, args.final, os.path.join(edl_dir, edl_stem + '_vfx_final.edl'))
     elif args.compare:
         project = load_project()
@@ -1766,7 +1856,7 @@ def main():
         print()
         project['config']['markers'] = {**m, 'user': user, 'track': track, 'color': color}
         save_project(project)
-        old_events = project['events']
+        old_events = get_active_entry(project)['events']
         new_data = edl_to_json(new_edl)
         events = compare_edls(old_events, new_data['events'], fps_val, handles_val)
         counts = {}
@@ -1796,18 +1886,21 @@ def main():
         export_changelist_tab(events, fps_val, handles_val, tab_path)
     elif args.aaf_write:
         project = load_project()
-        aaf_file = os.path.join(project['config']['edl_dir'], project['config']['edl_file'])
+        entry = get_active_entry(project)
+        aaf_file = os.path.join(entry['edl_dir'], entry['edl_file'])
         if not aaf_file.lower().endswith('.aaf'):
             print("Error: project was not imported from an AAF. Run -e with an AAF file first.", file=sys.stderr)
             sys.exit(1)
+        if not os.path.exists(aaf_file):
+            sys.exit(1)  # warning already printed by load_project()
         check_aaf_consistency(aaf_file)
         user, color, position, clip_color = prompt_aaf_options(project['config'])
         project['config']['markers'] = {'user': user, 'color': color, 'position': position, 'clip_color': clip_color}
         save_project(project)
-        aaf_stem = os.path.splitext(project['config']['edl_file'])[0]
-        output_aaf = os.path.join(project['config']['edl_dir'], aaf_stem + '_new.aaf')
+        aaf_stem = os.path.splitext(entry['edl_file'])[0]
+        output_aaf = os.path.join(entry['edl_dir'], aaf_stem + '_new.aaf')
         json_to_aaf(PROJECT_FILE, aaf_file, output_aaf, user, color, position, clip_color)
-        for event in project['events']:
+        for event in entry['events']:
             vfx_id  = event['VFX ID']
             job_desc = event.get('job_description', '')
             event['clip_note'] = f"{vfx_id} {job_desc}".strip() if job_desc else vfx_id

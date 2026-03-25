@@ -4,7 +4,7 @@ description: Show a summary of the loaded vfx-turnover project: source file, Pro
 ---
 
 Read `~/.config/vfx_turnover/vfx_project.json` and print a concise project summary:
-- Source file (edl_file)
+- Active EDL/AAF (`config.active`) and its shot count
+- Library entries (count and filenames)
 - ProjectID, FPS, resolution, handles
-- Number of shots
 - Saved marker settings (user, track, color, position, clip_color)

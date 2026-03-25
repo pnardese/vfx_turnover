@@ -30,7 +30,7 @@ pipx reinstall vfx-turnover
 
 ### 1. Initialize Project
 
-Before importing any EDL or AAF, initialize the project with your settings:
+Run once at the start of a new project. **This clears any existing project data** — library, shot list, and settings are all reset.
 
 ```
 vfx-turnover -i
@@ -49,7 +49,29 @@ Settings are saved to `~/.config/vfx_turnover/vfx_project.json` and reused by al
 
 ### 2. Import EDL or AAF
 
-The `-e` command accepts both EDL and AAF files and saves the project data to the project JSON.
+The `-e FILE` command imports an EDL or AAF into the project library and sets it as the active timeline. You can import multiple EDL/AAF files — each is stored as a separate entry in the library. All exports always operate on the active entry.
+
+If you re-import a file with the same filename, the existing library entry is updated in place.
+
+#### Manage the library
+
+Run `-e` without an argument to open the interactive library manager:
+
+```
+vfx-turnover -e
+```
+
+```
+Library (2 entries):
+  * 1  timeline_v2.edl     48 shots   /path/to/edls
+    2  timeline_v1.edl     45 shots   /path/to/edls
+
+[L] Load (set active)   [R] Remove   [C] Clear all   [Q] Quit
+```
+
+The entry marked `*` is the currently active timeline. Use **L** to switch the active entry, **R** to remove one, **C** to clear all.
+
+#### Import from EDL
 
 **Import from EDL**
 
@@ -189,7 +211,28 @@ The output file is saved in the same folder as the EDL, named `<edl_stem>_<ale_s
 
 The script validates that the ALE FPS matches the project FPS (mismatch aborts) and warns if the `VIDEO_FORMAT` differs from the project resolution. A match summary is printed after export.
 
-### 6. Export ALE Pulls and Pulls EDL
+### 6. Export PDF Report
+
+Generate a PDF report from any TAB file exported by `-t`, with one card per shot, a thumbnail on the left, and all fields on the right in a 3-column grid.
+
+```bash
+tab-to-pdf SCENA_53_EDIT_TAB.txt -t "./53 thumbnails" -o scena_53.pdf
+```
+
+| Option | Description |
+|--------|-------------|
+| `-t DIR` | Folder of thumbnail images. Filenames are matched by VFX ID — handles both `0000 GDN_053_0010.jpg` (Avid frame export format) and plain `GDN_053_0010.jpg`. |
+| `-o PDF` | Output path. Defaults to `<TAB_FILE>.pdf` in the same folder. |
+
+Column names are read from the TAB header at runtime, so the command works with plain TAB files and ALE-merged TAB files without any configuration.
+
+Or use the slash command in Claude Code:
+
+```
+/vfx-report SCENA_53_EDIT_TAB.txt "./53 thumbnails"
+```
+
+### 7. Export ALE Pulls and Pulls EDL
 
 Export an ALE to create pull subclips and a Pulls EDL to cut them into a timeline — both exported in one step using the handle frames set in `-i`.
 
@@ -204,7 +247,7 @@ vfx-turnover -p
 
 ![Relink configuration](imgs/04_relink_edl_pulls_v02.png)
 
-### 7. Compare EDL Versions (Changelist)
+### 8. Compare EDL Versions (Changelist)
 
 When the editor delivers a revised EDL, compare it against the loaded project to generate a changelist markers file and TAB file for Avid. Clips are matched by VFX ID (from `*LOC` markers) or by reel + source timecode as fallback.
 
@@ -230,7 +273,7 @@ Handle frames are read from the project config (set via `-i`). The script prompt
 
 Frame deltas use `+` when the clip is extended and `-` when it is reduced. A trim is considered within handles (no new pull needed) when the source content added at each end stays within the handle frames configured in `-i`.
 
-### 8. VFX Cut-ins
+### 9. VFX Cut-ins
 
 When you receive incoming VFX (`.mov` files), import them into Avid, then export the bin in TAB format. Use the TAB file to generate an EDL for cutting the VFX into the timeline. Required bin columns: **Color**, **Name**, **Duration**, **Start**, **End**, **Tape**.
 
@@ -246,8 +289,9 @@ vfx-turnover -f avid_bin.txt
 
 | Option | Description |
 |--------|-------------|
-| `-i` | Initialize project settings (Project ID, FPS, resolution, handles) |
-| `-e FILE` | Import an EDL or AAF and create/update the project file |
+| `-i` | Initialize project settings — **clears all existing project data** |
+| `-e FILE` | Import an EDL or AAF into the library and set it as active |
+| `-e` | Open interactive library manager (load active, remove, clear) |
 | `-a` | Export a new AAF with VFX ID clip notes, markers and clip color (requires project imported from AAF via `-e`) |
 | `-m` | Export markers file for Avid (interactive options) |
 | `-s` | Export subcaps file for Avid |
@@ -258,6 +302,16 @@ vfx-turnover -f avid_bin.txt
 | `-c new.edl` | Compare new EDL against loaded project and export changelist markers and TAB files |
 
 All exported files are saved in the same folder as the original EDL or AAF. If an output file already exists, the script will ask for confirmation before overwriting.
+
+### tab-to-pdf
+
+A separate command (also included in this package) that generates a PDF report from any TAB file:
+
+```bash
+tab-to-pdf TAB_FILE [-t THUMBNAILS_DIR] [-o OUTPUT.pdf]
+```
+
+See [step 6](#6-export-pdf-report) for full details.
 
 ---
 
@@ -287,6 +341,7 @@ done
 | `/vfx-ids` | List all VFX IDs with job description, tape, source in/out, and record in/out |
 | `/vfx-rename OLD NEW` | Rename VFX IDs using a before/after example (applies pattern to all IDs) |
 | `/vfx-status` | Show loaded project summary |
+| `/vfx-report TAB [DIR]` | Generate a PDF report from a TAB file with optional thumbnails folder |
 
 ---
 
