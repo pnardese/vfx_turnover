@@ -95,6 +95,22 @@ If an output file already exists, the tool asks before overwriting.
 
 ---
 
+## PDF Report (`tab-to-pdf`)
+
+Generates a PDF from any TAB spreadsheet exported by `-t`. Each VFX ID gets a card with the thumbnail on the left and all fields on the right in a 3-column grid.
+
+```bash
+tab-to-pdf <TAB_FILE> [-t <thumbnails_dir>] [-o <output.pdf>]
+```
+
+- **`-t DIR`** — folder of thumbnail images; matched by VFX ID in filename (handles `0000 GDN_053_0010.jpg` or plain `GDN_053_0010.jpg`)
+- **`-o PDF`** — output path; defaults to `<TAB_FILE>.pdf` in the same folder
+- Column names are read from the TAB header at runtime — works with plain and ALE-merged TAB files
+
+Slash command: `/vfx-report <TAB_FILE> [<thumbnails_dir>]`
+
+---
+
 ## TAB File Columns
 
 `#`, `Name` (VFX ID), `Thumbnail`, `Comments` (job description), `Status`, `Date`, `Duration`, `Start`, `End`, `Frame Count Duration`, `Handles`, `Tape`

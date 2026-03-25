@@ -10,10 +10,12 @@ dependencies = [
     "pandas",
     "pyaaf2",
     "timecode",
+    "reportlab",
 ]
 
 [project.scripts]
 vfx-turnover = "vfx_turnover:main"
+tab-to-pdf = "tab_to_pdf:main"
 
 [tool.setuptools]
-py-modules = ["vfx_turnover"]
+py-modules = ["vfx_turnover", "tab_to_pdf"]
