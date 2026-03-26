@@ -334,6 +334,7 @@ done
 | Command | Description |
 |---------|-------------|
 | `/vfx-turnover` | Reference for the tool's CLI, project JSON structure, and AAF workflow |
+| `/vfx-clip-notes AAF` | Import an AAF and export it with VFX IDs as clip notes, markers, and clip color |
 | `/vfx-markers` | Export markers and subcaps (saved defaults) |
 | `/vfx-pulls` | Export ALE and Pulls EDL |
 | `/vfx-tab` | Export TAB spreadsheet file |
