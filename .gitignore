@@ -1,0 +1,17 @@
+# Markdown
+TODO*.md
+CLAUDE.md
+
+# Directories
+test/
+docs/
+screenshots avid/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+
+# macOS
+.DS_Store
