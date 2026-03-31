@@ -32,6 +32,13 @@ various files: markers, subcaps, ALE pulls, EDLs, AAF with clip notes, and sprea
 
 @.claude/skills/pyaaf2/SKILL.md
 
+## Git Commit Guidelines
+
+When creating commits:
+- Follow conventional commit format
+- Keep the first line under 50 characters
+- Do not include AI attribution in commit messages
+
 
 
 
