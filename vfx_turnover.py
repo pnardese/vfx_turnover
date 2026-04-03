@@ -549,15 +549,18 @@ def export_google_tab(json_file_path: str, google_file_path: str):
         return
     try:
         with open(google_file_path, 'w') as output_file:    # Open TAB file
-            heading = '#' + '\t' + 'Name' + '\t' + 'Thumbnail' + '\t' + 'Comments' + '\t' + 'Status' + '\t' + 'Date' + '\t' + 'Duration' + '\t' + 'Start' + '\t' +\
-            'End' + '\t' + 'Frame Count Duration' + '\t' + 'Handles' + '\t' + 'Tape'   # Define TAB heading
+            heading = '#\tName\tThumbnail\tComments\tStatus\tDate\tDuration\tStart\tEnd\tStart Frame\tEnd Frame\tFrame Count Duration\tHandles\tTape'
             output_file.write(heading + '\n')   # Write heading to TAB file
             counter = 1  # Define counter of events in JSON file
             for i in range(len(entry['events'])):   # Loop through JSON file
                 start_TC = Timecode(fps, entry['events'][i]['source_start_TC']) # Define start timecode
                 end_TC = Timecode(fps, entry['events'][i]['source_end_TC']) # Define end timecode
                 duration = end_TC - start_TC    # Define duration
-                number_of_frames = duration.frames  # Define number of frames
+                number_of_frames = duration.frames + 2 * handles  # includes head and tail handles
+                src_in  = start_TC - handles
+                src_out = end_TC + handles
+                start_frame = 1001
+                end_frame = 1000 + number_of_frames
                 google_file_line = create_string(
                     '\t',
                     str(counter),
@@ -567,9 +570,10 @@ def export_google_tab(json_file_path: str, google_file_path: str):
                     '',
                     '',
                     str(duration),
-                    entry['events'][i]['source_start_TC'],
-                    entry['events'][i]['source_end_TC'],
-                    # str(Timecode(fps, entry['events'][i]['source_end_TC']) - 1), # per gestire i consolidati senza maniglie...
+                    str(src_in),
+                    str(src_out),
+                    str(start_frame),
+                    str(end_frame),
                     str(number_of_frames),
                     str(handles),
                     entry['events'][i]['reel'],
@@ -670,7 +674,7 @@ def merge_ale_tab(json_file_path: str, ale_file_path: str, output_path: str):
 
     try:
         with open(output_path, 'w') as out:
-            std_header = '#\tName\tThumbnail\tComments\tStatus\tDate\tDuration\tStart\tEnd\tFrame Count Duration\tHandles\tTape'
+            std_header = '#\tName\tThumbnail\tComments\tStatus\tDate\tDuration\tStart\tEnd\tStart Frame\tEnd Frame\tFrame Count Duration\tHandles\tTape'
             ale_header = '\t'.join(col_header(c) for c in extra_cols)
             out.write(std_header + ('\t' + ale_header if ale_header else '') + '\n')
 
@@ -679,6 +683,11 @@ def merge_ale_tab(json_file_path: str, ale_file_path: str, output_path: str):
                 start_TC = Timecode(fps, event['source_start_TC'])
                 end_TC   = Timecode(fps, event['source_end_TC'])
                 duration = end_TC - start_TC
+                number_of_frames = duration.frames + 2 * handles
+                src_in  = start_TC - handles
+                src_out = end_TC + handles
+                start_frame = 1001
+                end_frame = 1000 + number_of_frames
 
                 std_values = create_string(
                     '\t',
@@ -689,9 +698,11 @@ def merge_ale_tab(json_file_path: str, ale_file_path: str, output_path: str):
                     '',
                     '',
                     str(duration),
-                    event['source_start_TC'],
-                    event['source_end_TC'],
-                    str(duration.frames),
+                    str(src_in),
+                    str(src_out),
+                    str(start_frame),
+                    str(end_frame),
+                    str(number_of_frames),
                     str(handles),
                     event['reel'],
                 )
@@ -914,7 +925,7 @@ def export_changelist_tab(events: list, fps_val: str, handles_val: int, output_p
         return
     try:
         with open(output_path, 'w') as out:
-            heading = '#\tName\tThumbnail\tComments\tStatus\tDate\tDuration\tStart\tEnd\tFrame Count Duration\tHandles\tTape'
+            heading = '#\tName\tThumbnail\tComments\tStatus\tDate\tDuration\tStart\tEnd\tStart Frame\tEnd Frame\tFrame Count Duration\tHandles\tTape'
             out.write(heading + '\n')
             counter = 1
             for e in events:
@@ -923,6 +934,7 @@ def export_changelist_tab(events: list, fps_val: str, handles_val: int, output_p
                 src_start = Timecode(fps_val, e['source_start_TC'])
                 src_end   = Timecode(fps_val, e['source_end_TC'])
                 duration  = src_end - src_start
+                number_of_frames = duration.frames + 2 * handles_val
                 line = create_string(
                     '\t',
                     str(counter),
@@ -934,7 +946,9 @@ def export_changelist_tab(events: list, fps_val: str, handles_val: int, output_p
                     str(duration),
                     e['source_start_TC'],
                     e['source_end_TC'],
-                    str(duration.frames),
+                    '',
+                    '',
+                    str(number_of_frames),
                     str(handles_val),
                     e.get('reel', ''),
                 )
